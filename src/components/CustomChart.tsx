@@ -39,9 +39,6 @@ export function MetricasFuerzaView() {
             ]}
             // Activamos la rejilla de fondo estilo técnico/militar
             grid={{ vertical: true, horizontal: true }}
-            slotProps={{
-              legend: { hidden: true }, // Ocultamos la leyenda para máxima limpieza
-            }}
           />
         </Box>
       </CardContent>
