@@ -29,11 +29,19 @@ export interface LogEntrenamiento {
   }[];
 }
 
+export interface PesoDiario {
+  id?: number; // Clave primaria autoincremental
+  fecha: string; // "2026-07-10"
+  hora: string; // "14:20"
+  valor: number;
+}
+
 // 2. Definición de la Base de Datos
 class GymDatabase extends Dexie {
   ejercicios!: Table<Ejercicio>;
   rutinas!: Table<Rutina>;
   logs!: Table<LogEntrenamiento>;
+  pesos!: Table<PesoDiario>;
 
   constructor() {
     super("GymTrackerDB");
@@ -42,6 +50,7 @@ class GymDatabase extends Dexie {
       ejercicios: "id, grupoMuscular",
       rutinas: "id",
       logs: "++id, fecha, rutinaId",
+      pesos: "++id, fecha",
     });
   }
 }
