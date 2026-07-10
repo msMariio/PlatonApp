@@ -185,12 +185,7 @@ export function SeguimientoPeso() {
                 border: "1px dashed #222",
               }}
             >
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                textAlign="center"
-                sx={{ px: 2 }}
-              >
+              <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
                 [ INSUFICIENTES DATOS // INGRESA MINIMO 2 REGISTROS ]
               </Typography>
             </Box>
@@ -229,9 +224,6 @@ export function SeguimientoPeso() {
                     showMark: true,
                   },
                 ]}
-                slotProps={{
-                  legend: { hidden: true },
-                }}
                 grid={{ vertical: true, horizontal: true }}
               />
             </Box>
@@ -255,10 +247,10 @@ export function SeguimientoPeso() {
               <Stack
                 key={p.id}
                 direction="row"
-                alignItems="center"
-                spacing={2}
+                spacing={2} // El spacing sí lo acepta bien como propiedad directa
                 sx={{
                   py: 1,
+                  alignItems: "center", // ◄── ¡Muévelo aquí dentro!
                   justifyContent: "space-between",
                   borderBottom: "1px solid #111111",
                   "&:last-child": { borderBottom: "none" },
