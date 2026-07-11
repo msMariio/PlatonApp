@@ -67,14 +67,17 @@ export function SeguimientoPeso() {
   const maxPeso = valoresPeso.length > 0 ? Math.max(...valoresPeso) : 100;
 
   // Añadimos un margen de 2 KG por arriba y por abajo
-  const yMin = Math.max(0, Math.floor(minPeso - 2));
-  const yMax = Math.ceil(maxPeso + 2);
+  const yMin = Math.max(0, Math.floor(minPeso - 5));
+  const yMax = Math.ceil(maxPeso + 5);
   // ───────────────────────────────────────────────────────────────────
 
   // 3. Guardar nuevo registro con Hora automática
   const handleGuardarPeso = async (e: React.FormEvent) => {
     e.preventDefault();
-    const pesoNum = parseFloat(pesoInput);
+
+    // Acepta tanto "75.5" como "75,5"
+    const pesoNum = parseFloat(pesoInput.trim().replace(",", "."));
+
     if (isNaN(pesoNum) || pesoNum <= 0 || !fechaInput) return;
 
     const ahora = new Date();
@@ -93,6 +96,7 @@ export function SeguimientoPeso() {
     setPesoInput("");
     setFechaInput(obtenerFechaHoy());
   };
+
 
   // 4. Función para borrar un registro por su ID
   const handleEliminarPeso = async (id?: number) => {
