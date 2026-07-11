@@ -66,16 +66,15 @@ export function SeguimientoPeso() {
   const minPeso = valoresPeso.length > 0 ? Math.min(...valoresPeso) : 0;
   const maxPeso = valoresPeso.length > 0 ? Math.max(...valoresPeso) : 100;
 
-  // Añadimos un margen de 2 KG por arriba y por abajo
   const yMin = Math.max(0, Math.floor(minPeso - 5));
   const yMax = Math.ceil(maxPeso + 5);
   // ───────────────────────────────────────────────────────────────────
 
-  // 3. Guardar nuevo registro con Hora automática
+  // 3. Guardar nuevo registro con validación segura
   const handleGuardarPeso = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Acepta tanto "75.5" como "75,5"
+    // Convertimos la coma a punto solo en el momento de procesarlo matemáticamente
     const pesoNum = parseFloat(pesoInput.trim().replace(",", "."));
 
     if (isNaN(pesoNum) || pesoNum <= 0 || !fechaInput) return;
@@ -97,11 +96,17 @@ export function SeguimientoPeso() {
     setFechaInput(obtenerFechaHoy());
   };
 
-
   // 4. Función para borrar un registro por su ID
   const handleEliminarPeso = async (id?: number) => {
     if (id === undefined) return;
     await db.pesos.delete(id);
+  };
+
+  // 5. Formateador para mostrar el peso sin redondear falsamente
+  const formatearPeso = (valor: number) => {
+    return new Intl.NumberFormat("es-ES", {
+      maximumFractionDigits: 3, // Permite hasta 3 decimales sin forzarlos
+    }).format(valor);
   };
 
   return (
@@ -130,11 +135,16 @@ export function SeguimientoPeso() {
                 size="small"
                 fullWidth
                 value={pesoInput}
-                onChange={(e) => setPesoInput(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  // Regex: Permite números vacíos o dígitos seguidos opcionalmente de UNA coma/punto y más dígitos
+                  if (/^\d*[.,]?\d*$/.test(val)) {
+                    setPesoInput(val);
+                  }
+                }}
                 slotProps={{
                   htmlInput: {
                     inputMode: "decimal",
-                    pattern: "[0-9]*[.,]?[0-9]*",
                   },
                 }}
               />
@@ -144,6 +154,7 @@ export function SeguimientoPeso() {
                 color="primary"
                 disableElevation
                 fullWidth
+                disabled={!pesoInput} // Evita envíos en blanco
               >
                 REGISTRAR
               </Button>
@@ -190,7 +201,7 @@ export function SeguimientoPeso() {
               }}
             >
               <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
-                [ INSUFICIENTES DATOS // INGRESA MINIMO 2 REGISTROS ]
+                [ INSUFICIENTES DATOS // INGRESA MÍNIMO 2 REGISTROS ]
               </Typography>
             </Box>
           ) : (
@@ -199,7 +210,7 @@ export function SeguimientoPeso() {
                 xAxis={[
                   {
                     data: pesosFiltrados.map(
-                      (p) => new Date(`${p.fecha}T${p.hora}`),
+                      (p) => new Date(`${p.fecha}T${p.hora}`)
                     ),
                     scaleType: "time",
                     valueFormatter: (date: Date) => {
@@ -213,7 +224,6 @@ export function SeguimientoPeso() {
                     },
                   },
                 ]}
-                // Agregamos la propiedad yAxis con los límites controlados
                 yAxis={[
                   {
                     min: yMin,
@@ -251,10 +261,10 @@ export function SeguimientoPeso() {
               <Stack
                 key={p.id}
                 direction="row"
-                spacing={2} // El spacing sí lo acepta bien como propiedad directa
+                spacing={2}
                 sx={{
                   py: 1,
-                  alignItems: "center", // ◄── ¡Muévelo aquí dentro!
+                  alignItems: "center",
                   justifyContent: "space-between",
                   borderBottom: "1px solid #111111",
                   "&:last-child": { borderBottom: "none" },
@@ -272,7 +282,8 @@ export function SeguimientoPeso() {
                     color="primary"
                     sx={{ fontWeight: "bold" }}
                   >
-                    {p.valor.toFixed(1)} KG
+                    {/* Aquí usamos el formateador nuevo en lugar de .toFixed(1) */}
+                    {formatearPeso(p.valor)} KG
                   </Typography>
                 </Stack>
 

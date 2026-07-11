@@ -75,17 +75,16 @@ function App() {
             borderTop: 1,
             borderColor: "divider",
             bgcolor: "background.paper",
+
           }}
         >
           <BottomNavigation
-            showLabels
+
             value={currentTab}
             onChange={(_, newValue) => {
               setCurrentTab(newValue);
             }}
-            sx={{
-              gap: 1,
-            }}
+            sx={{ display: "flex", justifyContent: "space-around" }}
           >
             <BottomNavigationAction
               label="Historial"
@@ -95,7 +94,7 @@ function App() {
               label="Rutinas"
               icon={<FitnessCenterIcon />}
             />
-            <BottomNavigationAction label="Coach IA" icon={<SmartToyIcon />} />
+            <BottomNavigationAction label="Coach" icon={<SmartToyIcon />} />
             <BottomNavigationAction label="Ajustes" icon={<SettingsIcon />} />
           </BottomNavigation>
         </Box>
