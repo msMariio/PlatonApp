@@ -84,7 +84,6 @@ function App() {
             onChange={(_, newValue) => {
               setCurrentTab(newValue);
             }}
-            sx={{ display: "flex", justifyContent: "space-around" }}
           >
             <BottomNavigationAction
               label="Historial"
