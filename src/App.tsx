@@ -48,7 +48,7 @@ function App() {
             flexGrow: 1,
             overflowY: "auto",
             pb: (theme) =>
-              `calc(${theme.spacing(9)} + env(safe-area-inset-bottom, 0px))`,
+              `calc(${theme.spacing(13)} + env(safe-area-inset-bottom, 0px))`,
           }}
         >
           {renderView()}

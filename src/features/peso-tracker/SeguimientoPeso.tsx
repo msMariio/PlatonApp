@@ -23,7 +23,7 @@ type Timeframe = "semanal" | "mensual" | "anual" | "todo";
 const obtenerFechaHoy = () => new Date().toISOString().split("T")[0];
 
 export function SeguimientoPeso() {
-  const [pesoInput, setPesoInput] = useState<string>("");
+  const [pesoInput, setPesoInput] = useState<number>(0);
   const [fechaInput, setFechaInput] = useState<string>(obtenerFechaHoy());
   const [timeframe, setTimeframe] = useState<Timeframe>("semanal");
 
@@ -76,7 +76,7 @@ export function SeguimientoPeso() {
     e.preventDefault();
 
     // Convertimos la coma a punto solo en el momento de procesarlo matemáticamente
-    const pesoNum = parseFloat(pesoInput.trim().replace(",", "."));
+    const pesoNum = pesoInput; // Ya es un número gracias a InputNumber
 
     if (isNaN(pesoNum) || pesoNum <= 0 || !fechaInput) return;
 
@@ -93,7 +93,7 @@ export function SeguimientoPeso() {
       valor: pesoNum,
     });
 
-    setPesoInput("");
+    setPesoInput(0);
     setFechaInput(obtenerFechaHoy());
   };
 
@@ -101,13 +101,6 @@ export function SeguimientoPeso() {
   const handleEliminarPeso = async (id?: number) => {
     if (id === undefined) return;
     await db.pesos.delete(id);
-  };
-
-  // 5. Formateador para mostrar el peso sin redondear falsamente
-  const formatearPeso = (valor: number) => {
-    return new Intl.NumberFormat("es-ES", {
-      maximumFractionDigits: 3, // Permite hasta 3 decimales sin forzarlos
-    }).format(valor);
   };
 
   return (
@@ -137,7 +130,7 @@ export function SeguimientoPeso() {
                 step={0.01}
                 value={Number(pesoInput) || 0}
                 onValueChange={(value) => {
-                  setPesoInput(value !== null ? value.toString() : "");
+                  setPesoInput(value !== null ? value : 0);
                 }}
               />
               <Button
@@ -274,8 +267,10 @@ export function SeguimientoPeso() {
                     color="primary"
                     sx={{ fontWeight: "bold" }}
                   >
-                    {/* Aquí usamos el formateador nuevo en lugar de .toFixed(1) */}
-                    {formatearPeso(p.valor)} KG
+                    {p.valor.toLocaleString("es-ES", {
+                      maximumFractionDigits: 3,
+                    })}{" "}
+                    KG
                   </Typography>
                 </Stack>
 
@@ -283,7 +278,7 @@ export function SeguimientoPeso() {
                   size="small"
                   onClick={() => handleEliminarPeso(p.id)}
                   sx={{
-                    color: "#444444",
+                    color: "text.secondary",
                     "&:hover": { color: "#ff4444" },
                     borderRadius: 0,
                   }}
