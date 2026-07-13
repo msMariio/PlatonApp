@@ -27,9 +27,10 @@ export function AppFooter({ currentTab, onChangeTab }: AppFooterProps) {
         borderTop: 1,
         borderColor: "divider",
         bgcolor: (theme) => alpha(theme.palette.background.paper, 0.7),
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        pb: "env(safe-area-inset-bottom, 0px)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        pb: (theme) =>
+          `calc(${theme.spacing(3)} + env(safe-area-inset-bottom, 0px))`,
       }}
     >
       <BottomNavigation
