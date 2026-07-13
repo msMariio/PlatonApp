@@ -11,19 +11,15 @@ import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import SettingsIcon from "@mui/icons-material/Settings";
-import { SeguimientoPeso } from "./components/SeguimientoPeso";
+import { SeguimientoPeso } from "./features/peso-tracker/SeguimientoPeso";
 
-import { wildTheme } from "./theme";
+import { wildTheme } from "./core/theme";
 
 // Placeholders de las pantallas
-const PesoView = () => (
-  <Box>
-    <SeguimientoPeso />
-  </Box>
-);
-const RutinasView = () => <Box>🏋️‍♂️ MIS PLANES // RUTINAS</Box>;
-const CoachView = () => <Box>🤖 CORE // IA COACH</Box>;
-const AjustesView = () => <Box>⚙️ SYSTEM // CONFIGURACIÓN</Box>;
+const PesoView = () => <SeguimientoPeso />;
+const RutinasView = () => <Box>RUTINAS</Box>;
+const CoachView = () => <Box>IA</Box>;
+const AjustesView = () => <Box>AJUSTES</Box>;
 
 function App() {
   const [currentTab, setCurrentTab] = useState(0);
@@ -47,39 +43,34 @@ function App() {
     <ThemeProvider theme={wildTheme}>
       <CssBaseline />
 
-      {/* 1. EL CUADRO GRANDE (Contenedor de toda la pantalla del iPhone) */}
       <Box
         sx={{
           display: "flex",
           flexDirection: "column",
-          height: "100dvh", // Ocupa el 100% de la pantalla real del móvil
+          height: "100dvh",
           bgcolor: "background.default",
         }}
       >
-        {/* 2. CUADRO SUPERIOR (Contenido que se estira y tiene su propio scroll) */}
         <Box
           component="main"
           sx={{
             p: 2,
-            flexGrow: 1, // Se estira para ocupar todo el espacio disponible
-            overflowY: "auto", // Si el contenido no cabe, hace scroll AQUÍ dentro
+            flexGrow: 1,
+            overflowY: "auto",
           }}
         >
           {renderView()}
         </Box>
 
-        {/* 3. CUADRO INFERIOR (La barra, ocupa solo lo que necesita según su contenido) */}
         <Box
           component="footer"
           sx={{
             borderTop: 1,
             borderColor: "divider",
             bgcolor: "background.paper",
-
           }}
         >
           <BottomNavigation
-
             value={currentTab}
             onChange={(_, newValue) => {
               setCurrentTab(newValue);

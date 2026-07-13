@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "../db";
+import { db } from "../../core/db";
 import {
   Box,
   Card,
@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { LineChart } from "@mui/x-charts/LineChart";
+import InputNumber from "../../components/InputNumber";
 
 type Timeframe = "semanal" | "mensual" | "anual" | "todo";
 
@@ -129,23 +130,13 @@ export function SeguimientoPeso() {
                 onChange={(e) => setFechaInput(e.target.value)}
                 slotProps={{ inputLabel: { shrink: true } }}
               />
-              <TextField
+              <InputNumber
                 label="PESO (KG)"
-                variant="outlined"
                 size="small"
-                fullWidth
-                value={pesoInput}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  // Regex: Permite números vacíos o dígitos seguidos opcionalmente de UNA coma/punto y más dígitos
-                  if (/^\d*[.,]?\d*$/.test(val)) {
-                    setPesoInput(val);
-                  }
-                }}
-                slotProps={{
-                  htmlInput: {
-                    inputMode: "decimal",
-                  },
+                min={0}
+                value={Number(pesoInput) || 0}
+                onValueChange={(value) => {
+                  setPesoInput(value !== null ? value.toString() : "");
                 }}
               />
               <Button
@@ -210,7 +201,7 @@ export function SeguimientoPeso() {
                 xAxis={[
                   {
                     data: pesosFiltrados.map(
-                      (p) => new Date(`${p.fecha}T${p.hora}`)
+                      (p) => new Date(`${p.fecha}T${p.hora}`),
                     ),
                     scaleType: "time",
                     valueFormatter: (date: Date) => {
