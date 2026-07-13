@@ -134,6 +134,7 @@ export function SeguimientoPeso() {
                 label="PESO (KG)"
                 size="small"
                 min={0}
+                step={0.01}
                 value={Number(pesoInput) || 0}
                 onValueChange={(value) => {
                   setPesoInput(value !== null ? value.toString() : "");

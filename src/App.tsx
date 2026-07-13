@@ -1,17 +1,7 @@
 import { useState } from "react";
-import {
-  ThemeProvider,
-  CssBaseline,
-  Box,
-  BottomNavigation,
-  BottomNavigationAction,
-} from "@mui/material";
-
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
-import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import SettingsIcon from "@mui/icons-material/Settings";
+import { ThemeProvider, CssBaseline, Box } from "@mui/material";
 import { SeguimientoPeso } from "./features/peso-tracker/SeguimientoPeso";
+import { AppFooter } from "./components/AppFooter";
 
 import { wildTheme } from "./core/theme";
 
@@ -23,7 +13,6 @@ const AjustesView = () => <Box>AJUSTES</Box>;
 
 function App() {
   const [currentTab, setCurrentTab] = useState(0);
-
   const renderView = () => {
     switch (currentTab) {
       case 0:
@@ -45,6 +34,7 @@ function App() {
 
       <Box
         sx={{
+          position: "relative",
           display: "flex",
           flexDirection: "column",
           height: "100dvh",
@@ -57,37 +47,14 @@ function App() {
             p: 2,
             flexGrow: 1,
             overflowY: "auto",
+            pb: (theme) =>
+              `calc(${theme.spacing(9)} + env(safe-area-inset-bottom, 0px))`,
           }}
         >
           {renderView()}
         </Box>
 
-        <Box
-          component="footer"
-          sx={{
-            borderTop: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
-          }}
-        >
-          <BottomNavigation
-            value={currentTab}
-            onChange={(_, newValue) => {
-              setCurrentTab(newValue);
-            }}
-          >
-            <BottomNavigationAction
-              label="Historial"
-              icon={<CalendarTodayIcon />}
-            />
-            <BottomNavigationAction
-              label="Rutinas"
-              icon={<FitnessCenterIcon />}
-            />
-            <BottomNavigationAction label="Coach" icon={<SmartToyIcon />} />
-            <BottomNavigationAction label="Ajustes" icon={<SettingsIcon />} />
-          </BottomNavigation>
-        </Box>
+        <AppFooter currentTab={currentTab} onChangeTab={setCurrentTab} />
       </Box>
     </ThemeProvider>
   );
