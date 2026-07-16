@@ -11,7 +11,14 @@ type ChartLineProps = {
   yMax?: number;
   showMark?: boolean;
   xScaleType?: "time" | "point";
-  xValueFormatter?: (value: Date | string | number) => string;
+  xValueFormatter?: (
+    value: Date | string | number,
+    context?: {
+      location?: "tick" | "tooltip" | "legend" | "zoom-slider-tooltip";
+    },
+  ) => string;
+  xTickMinStep?: number;
+  xTickMaxStep?: number;
 };
 
 /**
@@ -32,11 +39,15 @@ export function ChartLine({
   showMark = true,
   xScaleType = "time",
   xValueFormatter,
+  xTickMinStep,
+  xTickMaxStep,
 }: ChartLineProps) {
   const xAxisEntry = {
     data: xData,
     scaleType: xScaleType,
     ...(xValueFormatter ? { valueFormatter: xValueFormatter } : {}),
+    ...(xTickMinStep !== undefined ? { tickMinStep: xTickMinStep } : {}),
+    ...(xTickMaxStep !== undefined ? { tickMaxStep: xTickMaxStep } : {}),
   };
 
   const yAxisEntry = {

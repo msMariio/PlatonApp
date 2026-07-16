@@ -16,7 +16,14 @@ type ChartCardProps = {
   yMin?: number;
   yMax?: number;
   xScaleType?: "time" | "point";
-  xValueFormatter?: (value: Date | string | number) => string;
+  xValueFormatter?: (
+    value: Date | string | number,
+    context?: {
+      location?: "tick" | "tooltip" | "legend" | "zoom-slider-tooltip";
+    },
+  ) => string;
+  xTickMinStep?: number;
+  xTickMaxStep?: number;
   /** Mínimo de puntos para renderizar el chart; por debajo se muestra emptyState */
   minPoints?: number;
   emptyMessage?: string;
@@ -41,11 +48,14 @@ export function ChartCard({
   yMax,
   xScaleType,
   xValueFormatter,
+  xTickMinStep,
+  xTickMaxStep,
   minPoints = 2,
   emptyMessage = "[ INSUFICIENTES DATOS // INGRESA MÍNIMO 2 REGISTROS ]",
   chartHeight = 300,
 }: ChartCardProps) {
-  const showTimeframe = timeframe !== undefined && onTimeframeChange !== undefined;
+  const showTimeframe =
+    timeframe !== undefined && onTimeframeChange !== undefined;
   const isEmpty = yData.length < minPoints;
 
   return (
@@ -68,9 +78,7 @@ export function ChartCard({
         </Stack>
 
         {isEmpty ? (
-          <EmptyStateCard height={chartHeight}>
-            {emptyMessage}
-          </EmptyStateCard>
+          <EmptyStateCard height={chartHeight}>{emptyMessage}</EmptyStateCard>
         ) : (
           <ChartLine
             xData={xData}
@@ -81,6 +89,8 @@ export function ChartCard({
             yMax={yMax}
             xScaleType={xScaleType}
             xValueFormatter={xValueFormatter}
+            xTickMinStep={xTickMinStep}
+            xTickMaxStep={xTickMaxStep}
             height={chartHeight}
           />
         )}

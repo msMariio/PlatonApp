@@ -4,9 +4,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Button,
 } from "@mui/material";
+import { AppTextField } from "../../../components/AppTextField";
 
 type Props = {
   open: boolean;
@@ -44,10 +44,9 @@ export function NuevaRutinaDialog({ open, onClose, onCreate }: Props) {
         NUEVA RUTINA
       </DialogTitle>
       <DialogContent>
-        <TextField
+        <AppTextField
           autoFocus
           fullWidth
-          size="small"
           label="NOMBRE"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
@@ -57,7 +56,6 @@ export function NuevaRutinaDialog({ open, onClose, onCreate }: Props) {
               void handleCrear();
             }
           }}
-          slotProps={{ inputLabel: { shrink: true } }}
         />
       </DialogContent>
       <DialogActions>

@@ -4,7 +4,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Button,
   Box,
   List,
@@ -19,6 +18,7 @@ import AddIcon from "@mui/icons-material/Add";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type GrupoMuscular } from "../../../core/db";
 import { crearEjercicio } from "../data";
+import { AppTextField } from "../../../components/AppTextField";
 
 type Props = {
   open: boolean;
@@ -94,13 +94,11 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
       <DialogContent dividers>
         {creando ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-            <TextField
+            <AppTextField
               autoFocus
               label="NOMBRE"
-              size="small"
               value={nombreNuevo}
               onChange={(e) => setNombreNuevo(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
             />
             <ToggleButtonGroup
               exclusive
@@ -119,27 +117,23 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
-            <TextField
+            <AppTextField
               label="DESCRIPCIÓN (opcional)"
-              size="small"
               multiline
               minRows={2}
               value={descNuevo}
               onChange={(e) => setDescNuevo(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Box>
         ) : (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <TextField
-                size="small"
-                label="BUSCAR"
-                fullWidth
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
+            <AppTextField
+              label="BUSCAR"
+              fullWidth
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+            />
               <IconButton
                 onClick={() => setCreando(true)}
                 sx={{

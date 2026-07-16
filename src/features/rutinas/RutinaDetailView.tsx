@@ -3,11 +3,11 @@ import {
   Box,
   Button,
   IconButton,
-  TextField,
   Card,
   CardContent,
   Typography,
 } from "@mui/material";
+import { AppTextField } from "../../components/AppTextField";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import {
@@ -154,9 +154,8 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
       <Card>
         <CardContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
+            <AppTextField
               label="NOMBRE"
-              size="small"
               value={nombreDraft}
               onChange={(e) => setNombreDraft(e.target.value)}
               onBlur={() => {
@@ -165,11 +164,9 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
                   void renombrarRutina(rutinaId, v);
                 }
               }}
-              slotProps={{ inputLabel: { shrink: true } }}
             />
-            <TextField
+            <AppTextField
               label="DESCRIPCIÓN"
-              size="small"
               multiline
               minRows={2}
               value={descDraft}
@@ -179,7 +176,6 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
                   void setRutinaDescripcion(rutinaId, descDraft);
                 }
               }}
-              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Box>
         </CardContent>
