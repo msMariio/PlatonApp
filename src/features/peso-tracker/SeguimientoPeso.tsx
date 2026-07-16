@@ -1,103 +1,71 @@
-import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "../../core/db";
+import { useMemo, useState } from "react";
 import {
   Box,
   Card,
   CardContent,
-  Typography,
+  Stack,
   TextField,
   Button,
-  Stack,
-  FormControl,
-  Select,
-  MenuItem,
   IconButton,
+  Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { LineChart } from "@mui/x-charts/LineChart";
 import InputNumber from "../../components/InputNumber";
+import { PageHeader } from "../../components/PageHeader";
+import { SectionLabel } from "../../components/SectionLabel";
+import { ChartCard } from "../../components/ChartCard";
+import { EmptyStateCard } from "../../components/EmptyStateCard";
+import type { Timeframe } from "../../components/TimeframeSelector";
+import { usePesosOrdenados } from "./usePesosOrdenados";
+import { db } from "../../core/db";
 
-type Timeframe = "semanal" | "mensual" | "anual" | "todo";
+const formatXAxis = (d: Date | string | number) => {
+  if (!(d instanceof Date)) return String(d);
+  const dd = d.getDate().toString().padStart(2, "0");
+  const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mi = d.getMinutes().toString().padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+};
 
 const obtenerFechaHoy = () => new Date().toISOString().split("T")[0];
 
 export function SeguimientoPeso() {
-  const [pesoInput, setPesoInput] = useState<number>(0);
-  const [fechaInput, setFechaInput] = useState<string>(obtenerFechaHoy());
-  const [timeframe, setTimeframe] = useState<Timeframe>("semanal");
+  const { pesos, filtrarPesos } = usePesosOrdenados();
+  const [pesoInput, setPesoInput] = useState(0);
+  const [fechaInput, setFechaInput] = useState(obtenerFechaHoy());
+  const [timeframe, setTimeframe] = useState<Timeframe>("7D");
 
-  // 1. Escuchar datos en vivo ordenados cronológicamente
-  const todosLosPesos =
-    useLiveQuery(async () => {
-      const data = await db.pesos.toArray();
-      return data.sort((a, b) => {
-        const fechaComp = a.fecha.localeCompare(b.fecha);
-        if (fechaComp !== 0) return fechaComp;
-        return a.hora.localeCompare(b.hora);
-      });
-    }) || [];
+  const pesosFiltrados = filtrarPesos(pesos, timeframe);
 
-  // 2. Filtrado temporal
-  const filtrarPesos = () => {
-    if (todosLosPesos.length === 0) return [];
-    const ahora = new Date();
-    const limite = new Date();
+  const { yMin, yMax } = useMemo(() => {
+    const valores = pesosFiltrados.map((p) => p.valor);
+    if (valores.length === 0) return { yMin: 0, yMax: 100 };
+    const minV = Math.min(...valores);
+    const maxV = Math.max(...valores);
+    return {
+      yMin: Math.max(0, Math.floor(minV - 5)),
+      yMax: Math.ceil(maxV + 5),
+    };
+  }, [pesosFiltrados]);
 
-    switch (timeframe) {
-      case "semanal":
-        limite.setDate(ahora.getDate() - 7);
-        break;
-      case "mensual":
-        limite.setDate(ahora.getDate() - 30);
-        break;
-      case "anual":
-        limite.setDate(ahora.getDate() - 365);
-        break;
-      case "todo":
-        return todosLosPesos;
-    }
-    return todosLosPesos.filter((p) => new Date(p.fecha) >= limite);
-  };
-
-  const pesosFiltrados = filtrarPesos();
-
-  // ─── CÁLCULO DINÁMICO DE LÍMITES PARA EL EJE Y ─────────────────────
-  const valoresPeso = pesosFiltrados.map((p) => p.valor);
-  const minPeso = valoresPeso.length > 0 ? Math.min(...valoresPeso) : 0;
-  const maxPeso = valoresPeso.length > 0 ? Math.max(...valoresPeso) : 100;
-
-  const yMin = Math.max(0, Math.floor(minPeso - 5));
-  const yMax = Math.ceil(maxPeso + 5);
-  // ───────────────────────────────────────────────────────────────────
-
-  // 3. Guardar nuevo registro con validación segura
   const handleGuardarPeso = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Convertimos la coma a punto solo en el momento de procesarlo matemáticamente
-    const pesoNum = pesoInput; // Ya es un número gracias a InputNumber
-
-    if (isNaN(pesoNum) || pesoNum <= 0 || !fechaInput) return;
-
-    const ahora = new Date();
-    const horaActual = ahora.toLocaleTimeString([], {
+    if (!pesoInput || pesoInput <= 0 || !fechaInput) return;
+    const horaActual = new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     });
-
     await db.pesos.add({
       fecha: fechaInput,
       hora: horaActual,
-      valor: pesoNum,
+      valor: pesoInput,
     });
-
     setPesoInput(0);
     setFechaInput(obtenerFechaHoy());
   };
 
-  // 4. Función para borrar un registro por su ID
   const handleEliminarPeso = async (id?: number) => {
     if (id === undefined) return;
     await db.pesos.delete(id);
@@ -105,11 +73,8 @@ export function SeguimientoPeso() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <Typography variant="h5" color="primary">
-        SEGUIMIENTO DE PESO
-      </Typography>
+      <PageHeader>SEGUIMIENTO DE PESO</PageHeader>
 
-      {/* Formulario */}
       <Card>
         <CardContent>
           <Box component="form" onSubmit={handleGuardarPeso}>
@@ -128,10 +93,8 @@ export function SeguimientoPeso() {
                 size="small"
                 min={0}
                 step={0.01}
-                value={Number(pesoInput) || 0}
-                onValueChange={(value) => {
-                  setPesoInput(value !== null ? value : 0);
-                }}
+                value={pesoInput}
+                onValueChange={(v) => setPesoInput(v ?? 0)}
               />
               <Button
                 type="submit"
@@ -139,7 +102,7 @@ export function SeguimientoPeso() {
                 color="primary"
                 disableElevation
                 fullWidth
-                disabled={!pesoInput} // Evita envíos en blanco
+                disabled={!pesoInput}
               >
                 REGISTRAR
               </Button>
@@ -148,99 +111,25 @@ export function SeguimientoPeso() {
         </CardContent>
       </Card>
 
-      {/* Gráfica */}
+      <ChartCard
+        title="HISTORIAL"
+        timeframe={timeframe}
+        onTimeframeChange={setTimeframe}
+        xData={pesosFiltrados.map((p) => new Date(`${p.fecha}T${p.hora}`))}
+        yData={pesosFiltrados.map((p) => p.valor)}
+        seriesLabel="Masa Corporal (KG)"
+        color="#adff2f"
+        yMin={yMin}
+        yMax={yMax}
+        xValueFormatter={formatXAxis}
+        emptyMessage="[ INSUFICIENTES DATOS // INGRESA MÍNIMO 2 REGISTROS ]"
+      />
+
       <Card>
-        <CardContent>
-          <Stack
-            direction="row"
-            sx={{
-              mb: 2,
-              gap: 2,
-              justifyContent: "space-between",
-            }}
-          >
-            <Typography variant="button" color="text.secondary">
-              HISTORIAL
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 110 }}>
-              <Select
-                value={timeframe}
-                onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-              >
-                <MenuItem value="semanal">7D</MenuItem>
-                <MenuItem value="mensual">30D</MenuItem>
-                <MenuItem value="anual">1A</MenuItem>
-                <MenuItem value="todo">TODO</MenuItem>
-              </Select>
-            </FormControl>
-          </Stack>
-
-          {pesosFiltrados.length < 2 ? (
-            <Box
-              sx={{
-                height: 250,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "1px dashed #222",
-              }}
-            >
-              <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
-                [ INSUFICIENTES DATOS // INGRESA MÍNIMO 2 REGISTROS ]
-              </Typography>
-            </Box>
-          ) : (
-            <Box sx={{ width: "100%", height: 300 }}>
-              <LineChart
-                xAxis={[
-                  {
-                    data: pesosFiltrados.map(
-                      (p) => new Date(`${p.fecha}T${p.hora}`),
-                    ),
-                    scaleType: "time",
-                    valueFormatter: (date: Date) => {
-                      const d = date.getDate().toString().padStart(2, "0");
-                      const m = (date.getMonth() + 1)
-                        .toString()
-                        .padStart(2, "0");
-                      const hr = date.getHours().toString().padStart(2, "0");
-                      const min = date.getMinutes().toString().padStart(2, "0");
-                      return `${d}/${m} ${hr}:${min}`;
-                    },
-                  },
-                ]}
-                yAxis={[
-                  {
-                    min: yMin,
-                    max: yMax,
-                  },
-                ]}
-                series={[
-                  {
-                    data: pesosFiltrados.map((p) => p.valor),
-                    label: "Masa Corporal (KG)",
-                    color: "#adff2f",
-                    showMark: true,
-                  },
-                ]}
-                grid={{ vertical: true, horizontal: true }}
-              />
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Bitácora de Registros */}
-      <Card sx={{ flexGrow: 1 }}>
         <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <Typography variant="button" color="text.secondary" sx={{ mb: 1 }}>
-            LOGS
-          </Typography>
-
+          <SectionLabel sx={{ mb: 1 }}>LOGS</SectionLabel>
           {pesosFiltrados.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              [ NO HAY REGISTROS EN ESTE PERIODO ]
-            </Typography>
+            <EmptyStateCard height={80}>[ NO HAY REGISTROS EN ESTE PERIODO ]</EmptyStateCard>
           ) : (
             [...pesosFiltrados].reverse().map((p) => (
               <Stack
@@ -251,12 +140,13 @@ export function SeguimientoPeso() {
                   py: 1,
                   alignItems: "center",
                   justifyContent: "space-between",
-                  borderBottom: "1px solid #111111",
-                  "&:last-child": { borderBottom: "none" },
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  "&:last-of-type": { borderBottom: "none" },
                 }}
               >
                 <Stack direction="row" spacing={2}>
-                  <Typography variant="body2" sx={{ color: "#ffffff" }}>
+                  <Typography variant="body2">
                     {p.fecha}{" "}
                     <Box component="span" sx={{ color: "text.secondary" }}>
                       [{p.hora}]
@@ -273,13 +163,12 @@ export function SeguimientoPeso() {
                     KG
                   </Typography>
                 </Stack>
-
                 <IconButton
                   size="small"
                   onClick={() => handleEliminarPeso(p.id)}
                   sx={{
                     color: "text.secondary",
-                    "&:hover": { color: "#ff4444" },
+                    "&:hover": { color: "error.main" },
                     borderRadius: 0,
                   }}
                 >

@@ -7,30 +7,36 @@ import InputAdornment from "@mui/material/InputAdornment";
 import InputLabel from "@mui/material/InputLabel";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import type { SxProps, Theme } from "@mui/material/styles";
 
 /**
- * This component is a placeholder for FormControl to correctly set the shrink label state on SSR.
+ * Placeholder para que FormControl pueda detectar correctamente el state
+ * de "shrink" en SSR.
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 function SSRInitialFilled(_: BaseNumberField.Root.Props) {
   return null;
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 SSRInitialFilled.muiName = "Input";
+
+type InputNumberProps = BaseNumberField.Root.Props & {
+  label?: React.ReactNode;
+  size?: "small" | "medium";
+  error?: boolean;
+  sx?: SxProps<Theme>;
+};
 
 export default function InputNumber({
   id: idProp,
   label,
   error,
   size = "medium",
+  sx,
   ...other
-}: BaseNumberField.Root.Props & {
-  label?: React.ReactNode;
-  size?: "small" | "medium";
-  error?: boolean;
-}) {
-  let id = React.useId();
-  if (idProp) {
-    id = idProp;
-  }
+}: InputNumberProps) {
+  const id = React.useId();
+  const finalId = idProp ?? id;
   return (
     <BaseNumberField.Root
       {...other}
@@ -42,18 +48,19 @@ export default function InputNumber({
           required={state.required}
           error={error}
           variant="outlined"
+          sx={sx}
         >
           {props.children}
         </FormControl>
       )}
     >
       <SSRInitialFilled {...other} />
-      <InputLabel htmlFor={id}>{label}</InputLabel>
+      <InputLabel htmlFor={finalId}>{label}</InputLabel>
       <BaseNumberField.Input
-        id={id}
+        id={finalId}
         render={(props, state) => (
           <OutlinedInput
-            aria-describedby={`${id}-helper-text`}
+            aria-describedby={`${finalId}-helper-text`}
             label={label}
             inputRef={props.ref}
             value={state.inputValue}

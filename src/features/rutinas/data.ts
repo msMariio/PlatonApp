@@ -1,0 +1,177 @@
+import {
+  db,
+  type Carpeta,
+  type Ejercicio,
+  type EjercicioEnRutina,
+  type GrupoMuscular,
+  type Rutina,
+} from "../../core/db";
+
+export type ContainerId = "ROOT" | string;
+
+export const ROOT: ContainerId = "ROOT";
+
+export function uid(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function carpetaIdFromContainer(c: ContainerId): string | undefined {
+  return c === ROOT ? undefined : c;
+}
+
+// ── Carpetas ─────────────────────────────────────────────────────────
+
+export async function crearCarpeta(nombre: string): Promise<void> {
+  const id = uid();
+  const total = await db.carpetas.count();
+  await db.carpetas.add({ id, nombre, order: total, collapsed: false });
+}
+
+export async function eliminarCarpeta(
+  id: string,
+  borrarHijas: boolean
+): Promise<void> {
+  if (borrarHijas) {
+    await db.rutinas.where("carpetaId").equals(id).delete();
+  } else {
+    await db.rutinas
+      .where("carpetaId")
+      .equals(id)
+      .modify({ carpetaId: undefined });
+  }
+  await db.carpetas.delete(id);
+}
+
+export async function toggleCarpetaCollapsed(id: string): Promise<void> {
+  const c = await db.carpetas.get(id);
+  if (!c) return;
+  await db.carpetas.update(id, { collapsed: !c.collapsed });
+}
+
+export async function renombrarCarpeta(
+  id: string,
+  nombre: string
+): Promise<void> {
+  await db.carpetas.update(id, { nombre });
+}
+
+/** Persiste el orden de carpetas tal cual vienen en el array. */
+export async function persistCarpetasOrder(
+  carpetas: Carpeta[]
+): Promise<void> {
+  await db.carpetas.bulkPut(carpetas.map((c, i) => ({ ...c, order: i })));
+}
+
+// ── Rutinas ──────────────────────────────────────────────────────────
+
+export async function crearRutina(
+  nombre: string,
+  carpetaId?: string
+): Promise<string> {
+  const id = uid();
+  const all = await db.rutinas.toArray();
+  const orden = all.filter(
+    (r) => (r.carpetaId ?? undefined) === (carpetaId ?? undefined)
+  ).length;
+  await db.rutinas.add({
+    id,
+    nombre,
+    descripcion: "",
+    carpetaId,
+    ejercicios: [],
+    order: orden,
+    createdAt: new Date().toISOString(),
+  });
+  return id;
+}
+
+export async function eliminarRutina(id: string): Promise<void> {
+  await db.rutinas.delete(id);
+}
+
+export async function renombrarRutina(
+  id: string,
+  nombre: string
+): Promise<void> {
+  await db.rutinas.update(id, { nombre });
+}
+
+export async function setRutinaDescripcion(
+  id: string,
+  descripcion: string
+): Promise<void> {
+  await db.rutinas.update(id, { descripcion });
+}
+
+/** Renumera 0..n en un solo contenedor (root o una carpeta). */
+export async function renumerarRutinasEn(
+  carpetaId: string | undefined
+): Promise<void> {
+  const all = await db.rutinas.toArray();
+  const filtered = all
+    .filter((r) => (r.carpetaId ?? undefined) === (carpetaId ?? undefined))
+    .sort((a, b) => a.order - b.order);
+  await db.rutinas.bulkPut(
+    filtered.map((r, i) => ({ ...r, order: i, carpetaId }))
+  );
+}
+
+/**
+ * Persiste el mapa completo Rutina[containerId][] tras una operación drag.
+ * Renumera 0..n en cada contenedor y asigna carpetaId correcto.
+ */
+export async function persistRutinasMap(
+  map: Record<ContainerId, Rutina[]>
+): Promise<void> {
+  const writes: Rutina[] = [];
+  for (const [container, list] of Object.entries(map)) {
+    const carpetaId = carpetaIdFromContainer(container);
+    list.forEach((r, i) =>
+      writes.push({ ...r, carpetaId, order: i })
+    );
+  }
+  await db.rutinas.bulkPut(writes);
+}
+
+// ── Ejercicios ───────────────────────────────────────────────────────
+
+export async function crearEjercicio(input: {
+  nombre: string;
+  grupoMuscular: GrupoMuscular;
+  descripcion?: string;
+}): Promise<string> {
+  const id = uid();
+  const ej: Ejercicio = { ...input, id };
+  await db.ejercicios.add(ej);
+  return id;
+}
+
+/** Construye un EjercicioEnRutina inicial con 3 series de 8 reps. */
+export function buildEjercicioInicial(
+  ejercicioId: string,
+  numSeriesDefault = 3
+): EjercicioEnRutina {
+  return {
+    id: uid(),
+    ejercicioId,
+    series: Array.from({ length: numSeriesDefault }, () => ({
+      repsObjetivo: 8,
+    })),
+    order: 0,
+  };
+}
+
+// ── Series dentro de un ejercicio de rutina ──────────────────────────
+
+export async function setEjerciciosEnRutina(
+  rutinaId: string,
+  ejercicios: Rutina["ejercicios"]
+): Promise<void> {
+  const ordenados = ejercicios
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((e, i) => ({ ...e, order: i }));
+  await db.rutinas.update(rutinaId, { ejercicios: ordenados });
+}
