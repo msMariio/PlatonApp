@@ -1,12 +1,5 @@
-import { useMemo, useState } from "react";
-import {
-  Box,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  Typography,
-} from "@mui/material";
+import { useState } from "react";
+import { Box, Button, IconButton, Typography } from "@mui/material";
 import { AppTextField } from "../../components/AppTextField";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
@@ -16,7 +9,7 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  closestCorners,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -62,10 +55,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     setDescDraft(rutina.descripcion ?? "");
   }
 
-  const catalogoLookup = useMemo(
-    () => new Map(ejerciciosCatalogo.map((e) => [e.id, e])),
-    [ejerciciosCatalogo]
-  );
+  const catalogoLookup = new Map(ejerciciosCatalogo.map((e) => [e.id, e]));
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -73,13 +63,12 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
-  const ejercicios = useMemo<EjercicioEnRutina[]>(() => {
-    if (!rutina) return [];
-    return [...rutina.ejercicios].sort((a, b) => a.order - b.order);
-  }, [rutina]);
+  const ejercicios: EjercicioEnRutina[] = rutina
+    ? [...rutina.ejercicios].sort((a, b) => a.order - b.order)
+    : [];
 
   if (!rutina) {
     return (
@@ -101,7 +90,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     const reordered = arrayMove(ejercicios, oi, ni);
     await setEjerciciosEnRutina(
       rutinaId,
-      reordered.map((ej, i) => ({ ...ej, order: i }))
+      reordered.map((ej, i) => ({ ...ej, order: i })),
     );
   };
 
@@ -110,7 +99,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     const next = [...ejercicios, { ...nuevo, order: ejercicios.length }];
     await setEjerciciosEnRutina(
       rutinaId,
-      next.map((e, i) => ({ ...e, order: i }))
+      next.map((e, i) => ({ ...e, order: i })),
     );
     setSelectOpen(false);
   };
@@ -119,7 +108,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     const updated = ejercicios.map((e) => (e.id === next.id ? next : e));
     await setEjerciciosEnRutina(
       rutinaId,
-      updated.map((e, i) => ({ ...e, order: i }))
+      updated.map((e, i) => ({ ...e, order: i })),
     );
   };
 
@@ -128,7 +117,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
     const updated = ejercicios.filter((e) => e.id !== id);
     await setEjerciciosEnRutina(
       rutinaId,
-      updated.map((e, i) => ({ ...e, order: i }))
+      updated.map((e, i) => ({ ...e, order: i })),
     );
   };
 
@@ -151,39 +140,35 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
         </PageHeader>
       </Box>
 
-      <Card>
-        <CardContent>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <AppTextField
-              label="NOMBRE"
-              value={nombreDraft}
-              onChange={(e) => setNombreDraft(e.target.value)}
-              onBlur={() => {
-                const v = nombreDraft.trim();
-                if (v && v !== rutina.nombre) {
-                  void renombrarRutina(rutinaId, v);
-                }
-              }}
-            />
-            <AppTextField
-              label="DESCRIPCIÓN"
-              multiline
-              minRows={2}
-              value={descDraft}
-              onChange={(e) => setDescDraft(e.target.value)}
-              onBlur={() => {
-                if (descDraft !== (rutina.descripcion ?? "")) {
-                  void setRutinaDescripcion(rutinaId, descDraft);
-                }
-              }}
-            />
-          </Box>
-        </CardContent>
-      </Card>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <AppTextField
+          label="NOMBRE"
+          value={nombreDraft}
+          onChange={(e) => setNombreDraft(e.target.value)}
+          onBlur={() => {
+            const v = nombreDraft.trim();
+            if (v && v !== rutina.nombre) {
+              void renombrarRutina(rutinaId, v);
+            }
+          }}
+        />
+        <AppTextField
+          label="DESCRIPCIÓN"
+          multiline
+          minRows={2}
+          value={descDraft}
+          onChange={(e) => setDescDraft(e.target.value)}
+          onBlur={() => {
+            if (descDraft !== (rutina.descripcion ?? "")) {
+              void setRutinaDescripcion(rutinaId, descDraft);
+            }
+          }}
+        />
+      </Box>
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCorners}
         onDragStart={(e) => setActiveId(String(e.active.id))}
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveId(null)}

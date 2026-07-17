@@ -58,8 +58,8 @@ export function EditPesoDialog({ peso, onClose, onSave }: Props) {
       <DialogTitle sx={{ letterSpacing: "0.05em" }}>
         EDITAR REGISTRO
       </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2} sx={{ pt: 1 }} onKeyDown={handleKeyDown}>
+      <DialogContent dividers sx={{ pt: 4 }}>
+        <Stack spacing={2} onKeyDown={handleKeyDown}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <AppTextField
               autoFocus

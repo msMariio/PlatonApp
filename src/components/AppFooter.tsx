@@ -5,10 +5,10 @@ import {
   alpha,
 } from "@mui/material";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
-import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import SettingsIcon from "@mui/icons-material/Settings";
-
+import FitnessCenterRoundedIcon from "@mui/icons-material/FitnessCenterRounded";
+// import SmartToyIcon from "@mui/icons-material/SmartToy";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 type AppFooterProps = {
   currentTab: number;
   onChangeTab: (newValue: number) => void;
@@ -47,9 +47,18 @@ export function AppFooter({ currentTab, onChangeTab }: AppFooterProps) {
           label="Historial"
           icon={<CalendarTodayIcon />}
         />
-        <BottomNavigationAction label="Rutinas" icon={<FitnessCenterIcon />} />
-        <BottomNavigationAction label="Coach" icon={<SmartToyIcon />} />
-        <BottomNavigationAction label="Ajustes" icon={<SettingsIcon />} />
+        <BottomNavigationAction
+          label="Rutinas"
+          icon={<FitnessCenterRoundedIcon />}
+        />
+        <BottomNavigationAction
+          label="Coach"
+          icon={<AutoAwesomeRoundedIcon />}
+        />
+        <BottomNavigationAction
+          label="Ajustes"
+          icon={<SettingsRoundedIcon />}
+        />
       </BottomNavigation>
     </Box>
   );

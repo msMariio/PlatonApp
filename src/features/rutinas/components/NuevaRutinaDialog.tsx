@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Box,
 } from "@mui/material";
 import { AppTextField } from "../../../components/AppTextField";
 
@@ -18,9 +19,13 @@ export function NuevaRutinaDialog({ open, onClose, onCreate }: Props) {
   const [nombre, setNombre] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const handleClose = () => {
+  const resetForm = () => {
     setNombre("");
     setSaving(false);
+  };
+
+  const handleClose = () => {
+    resetForm();
     onClose();
   };
 
@@ -29,7 +34,7 @@ export function NuevaRutinaDialog({ open, onClose, onCreate }: Props) {
     if (!limpio || saving) return;
     setSaving(true);
     await onCreate(limpio);
-    setSaving(false);
+    resetForm();
   };
 
   return (
@@ -44,19 +49,20 @@ export function NuevaRutinaDialog({ open, onClose, onCreate }: Props) {
         NUEVA RUTINA
       </DialogTitle>
       <DialogContent>
-        <AppTextField
-          autoFocus
-          fullWidth
-          label="NOMBRE"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void handleCrear();
-            }
-          }}
-        />
+        <Box sx={{ pt: 2 }}>
+          <AppTextField
+            fullWidth
+            label="NOMBRE"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleCrear();
+              }
+            }}
+          />
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} color="inherit" disableElevation>

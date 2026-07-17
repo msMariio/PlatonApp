@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -46,24 +46,26 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
   const [nombreNuevo, setNombreNuevo] = useState("");
   const [descNuevo, setDescNuevo] = useState("");
 
-  const filtrados = useMemo(() => {
-    const f = filtro.trim().toLowerCase();
-    return [...ejercicios]
-      .filter((e) =>
-        f
-          ? e.nombre.toLowerCase().includes(f) ||
-            e.grupoMuscular.includes(f)
-          : true
-      )
-      .sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }, [ejercicios, filtro]);
-
-  const handleClose = () => {
+  const resetForm = () => {
     setFiltro("");
     setCreando(false);
     setGrupoSel("pecho");
     setNombreNuevo("");
     setDescNuevo("");
+  };
+
+  const f = filtro.trim().toLowerCase();
+  const filtrados = [...ejercicios]
+    .filter((e) =>
+      f
+        ? e.nombre.toLowerCase().includes(f) ||
+          e.grupoMuscular.includes(f)
+        : true
+    )
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const handleClose = () => {
+    resetForm();
     onClose();
   };
 
@@ -75,6 +77,12 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
       grupoMuscular: grupoSel,
       descripcion: descNuevo.trim() || undefined,
     });
+    resetForm();
+    onPick(id);
+  };
+
+  const handlePickExisting = (id: string) => {
+    resetForm();
     onPick(id);
   };
 
@@ -91,9 +99,9 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
       <DialogTitle sx={{ letterSpacing: "0.05em" }}>
         AÑADIR EJERCICIO
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ pt: 4 }}>
         {creando ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <AppTextField
               autoFocus
               label="NOMBRE"
@@ -126,7 +134,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
             />
           </Box>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <AppTextField
               label="BUSCAR"
@@ -157,7 +165,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
                 {filtrados.map((e) => (
                   <ListItemButton
                     key={e.id}
-                    onClick={() => onPick(e.id)}
+                    onClick={() => handlePickExisting(e.id)}
                     sx={{ borderRadius: 0, mb: 0.5 }}
                   >
                     <ListItemText
@@ -175,7 +183,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
         {creando ? (
           <>
             <Button
-              onClick={() => setCreando(false)}
+              onClick={resetForm}
               color="inherit"
               disableElevation
             >

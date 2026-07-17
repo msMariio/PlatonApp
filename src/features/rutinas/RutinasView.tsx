@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Box, Button } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
@@ -9,7 +9,7 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  closestCorners,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
@@ -77,27 +77,25 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
   const carpetas = useLiveQuery(() => db.carpetas.toArray(), []) ?? [];
   const rutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
 
-  // Normaliza una vista consistente desde IndexedDB.
-  const normalized = useMemo(() => {
-    const carpetasOrd = [...carpetas].sort((a, b) => a.order - b.order);
-    const grupos: Record<ContainerId, Rutina[]> = { [ROOT]: [] };
-    carpetasOrd.forEach((c) => (grupos[c.id] = []));
-    rutinas.forEach((r) => {
-      const k = (r.carpetaId ?? ROOT) as ContainerId;
-      if (!grupos[k]) grupos[k] = [];
-      grupos[k].push(r);
-    });
-    for (const k of Object.keys(grupos)) {
-      grupos[k].sort((a, b) => a.order - b.order);
-    }
-    return { carpetasOrd, grupos };
-  }, [carpetas, rutinas]);
+  // Normaliza una vista consistente desde IndexedDB. El React Compiler
+  // memoiza automáticamente; no necesitamos useMemo aquí.
+  const carpetasOrd = [...carpetas].sort((a, b) => a.order - b.order);
+  const grupos: Record<ContainerId, Rutina[]> = { [ROOT]: [] };
+  carpetasOrd.forEach((c) => (grupos[c.id] = []));
+  rutinas.forEach((r) => {
+    const k = (r.carpetaId ?? ROOT) as ContainerId;
+    if (!grupos[k]) grupos[k] = [];
+    grupos[k].push(r);
+  });
+  for (const k of Object.keys(grupos)) {
+    grupos[k].sort((a, b) => a.order - b.order);
+  }
 
   // Draft durante el drag para que la UI reaccione entre contenedores.
   const [draft, setDraft] = useState<Record<ContainerId, Rutina[]> | null>(
     null
   );
-  const visible = draft ?? normalized.grupos;
+  const visible = draft ?? grupos;
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeKind, setActiveKind] = useState<
@@ -126,18 +124,19 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
 
   /**
    * Resuelve el containerId destino a partir del "over":
-   *  · carpeta física → su propio id (no usa el containerId declarado en data,
-   *    porque las carpetas viven en ROOT aunque otra rutina pueda caer sobre ellas)
-   *  · item con containerId en data → ese containerId
-   *  · id "ROOT" → ROOT
+   *  · Prioriza `containerId` del data prop (rutinas dentro de carpetas,
+   *    body de CarpetaCard vía `useDroppable`). Evita que "carpeta-body-{id}"
+   *    termine como ContainerId.
+   *  · Header de CarpetaCard (useSortable sin containerId) → su propio id.
+   *  · id "ROOT" → ROOT.
    */
   const resolveOverContainer = (
     overDataType: string | undefined,
     overId: string | number,
     overContainerData: ContainerId | undefined
   ): ContainerId | null => {
-    if (overDataType === "carpeta") return overId as ContainerId;
     if (overContainerData) return overContainerData;
+    if (overDataType === "carpeta") return overId as ContainerId;
     if (overId === ROOT) return ROOT;
     return null;
   };
@@ -175,9 +174,9 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
       const base = cur
         ? { ...cur }
         : {
-            [ROOT]: [...(normalized.grupos[ROOT] ?? [])] as Rutina[],
+            [ROOT]: [...(grupos[ROOT] ?? [])] as Rutina[],
             ...Object.fromEntries(
-              carpetas.map((c) => [c.id, [...(normalized.grupos[c.id] ?? [])]])
+              carpetas.map((c) => [c.id, [...(grupos[c.id] ?? [])]])
             ),
           };
       const sourceList = [...(base[source] ?? [])];
@@ -204,31 +203,20 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
     }
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
-    if (activeIdStr === overIdStr) {
-      setDraft(null);
-      return;
-    }
     const activeType = active.data.current?.type as string | undefined;
-    const finalMap = draft ?? visible;
+    const finalMap = draft ?? grupos;
 
     // Carpeta: reorder dentro de ROOT
     if (activeType === "carpeta") {
-      const oldIdx = normalized.carpetasOrd.findIndex(
-        (c) => c.id === activeIdStr
-      );
-      const newIdx = normalized.carpetasOrd.findIndex(
-        (c) => c.id === overIdStr
-      );
+      const oldIdx = carpetasOrd.findIndex((c) => c.id === activeIdStr);
+      const newIdx = carpetasOrd.findIndex((c) => c.id === overIdStr);
       if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
-        const reordered = arrayMove(normalized.carpetasOrd, oldIdx, newIdx);
-        await persistCarpetasOrder(reordered);
+        await persistCarpetasOrder(arrayMove(carpetasOrd, oldIdx, newIdx));
       }
       setDraft(null);
       return;
     }
 
-    // Rutina: resolver container destino
-    const source = findContainerForItem(activeIdStr);
     const overType = over.data.current?.type as string | undefined;
     const overContainerData = over.data.current?.containerId as
       | ContainerId
@@ -238,28 +226,82 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
       over.id,
       overContainerData
     );
-    if (!source || !overContainer) {
+    if (!overContainer) {
       setDraft(null);
       return;
     }
-    if (source === overContainer) {
-      const list = finalMap[source] ?? [];
+
+    // CRÍTICO: el contenedor ORIGINARIO (pre-draft) del item activo, no el
+    // de visible. Si lo buscásemos en visible, después de que draft movió el
+    // item a la carpeta destino detectaríamos source == overContainer y el
+    // branch same-container fallaría (oi = findIndex sobre el id de carpeta
+    // → -1) sin persistir nada. Esto era el bug del drop en carpeta vacía.
+    const originalContainer = (Object.keys(grupos) as ContainerId[]).find((k) =>
+      (grupos[k] ?? []).some((r) => r.id === activeIdStr)
+    );
+    if (!originalContainer) {
+      setDraft(null);
+      return;
+    }
+
+    if (originalContainer === overContainer) {
+      // Reorder intra-contenedor (intra-carpeta o intra-root). El caso
+      // active === over ya cae en oi === ai ⇒ no se persiste y el
+      // setDraft(null) del final limpia el estado.
+      const list = finalMap[overContainer] ?? [];
       const oi = list.findIndex((r) => r.id === overIdStr);
       const ai = list.findIndex((r) => r.id === activeIdStr);
       if (oi >= 0 && ai >= 0 && oi !== ai) {
-        const reordered = arrayMove(list, ai, oi);
-        await persistRutinasMap({ ...finalMap, [source]: reordered });
+        await persistRutinasMap({
+          ...finalMap,
+          [overContainer]: arrayMove(list, ai, oi),
+        });
       }
-    } else {
-      const carpetaId =
-        overContainer === ROOT ? undefined : (overContainer as string);
-      await persistRutinasMap({
-        ...finalMap,
-        [overContainer]: (finalMap[overContainer] ?? []).map((r) =>
-          r.id === activeIdStr ? { ...r, carpetaId } : r
-        ),
-      });
+      setDraft(null);
+      return;
     }
+
+    // CROSS-CONTAINER: insertar el item activo en overContainer y quitarlo
+    // del resto del mapa. Persistimos el mapa completo (con restantes sin el
+    // item), sin importar si draft lo había movido o no.
+    const carpetaId =
+      overContainer === ROOT ? undefined : (overContainer as string);
+    const targetList = finalMap[overContainer] ?? [];
+    const originalItem = (grupos[originalContainer] ?? []).find(
+      (r) => r.id === activeIdStr
+    );
+    if (!originalItem) {
+      setDraft(null);
+      return;
+    }
+
+    let newTargetList: Rutina[];
+    if (targetList.some((r) => r.id === activeIdStr)) {
+      // handleDragOver ya puso el item en target; sólo actualizamos carpetaId.
+      newTargetList = targetList.map((r) =>
+        r.id === activeIdStr ? { ...r, carpetaId } : r
+      );
+    } else {
+      const oIdx = targetList.findIndex((r) => r.id === overIdStr);
+      const insertAt = oIdx >= 0 ? oIdx + 1 : targetList.length;
+      newTargetList = [
+        ...targetList.slice(0, insertAt),
+        { ...originalItem, carpetaId },
+        ...targetList.slice(insertAt),
+      ];
+    }
+
+    const mapToPersist: Record<ContainerId, Rutina[]> = {};
+    for (const k of Object.keys(finalMap) as ContainerId[]) {
+      if (k === overContainer) {
+        mapToPersist[k] = newTargetList;
+      } else {
+        mapToPersist[k] = (finalMap[k] ?? []).filter(
+          (r) => r.id !== activeIdStr
+        );
+      }
+    }
+    await persistRutinasMap(mapToPersist);
     setDraft(null);
   };
 
@@ -269,29 +311,27 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
     setDraft(null);
   };
 
-  // Ghost en DragOverlay
-  const ghostCarpeta = useMemo(() => {
-    if (!activeId || activeKind !== "carpeta") return null;
-    return carpetas.find((x) => x.id === activeId) ?? null;
-  }, [activeId, activeKind, carpetas]);
+  // Ghost en DragOverlay (React Compiler memoiza automáticamente)
+  const ghostCarpeta =
+    !activeId || activeKind !== "carpeta"
+      ? null
+      : carpetas.find((x) => x.id === activeId) ?? null;
 
-  const ghostRutina = useMemo(() => {
-    if (!activeId || activeKind !== "rutina") return null;
-    return (
-      visible[ROOT]?.find((x) => x.id === activeId) ??
-      normalized.carpetasOrd
-        .flatMap((c) => visible[c.id] ?? [])
-        .find((x) => x.id === activeId) ??
-      null
-    );
-  }, [activeId, activeKind, visible, normalized.carpetasOrd]);
+  const ghostRutina =
+    !activeId || activeKind !== "rutina"
+      ? null
+      : (visible[ROOT]?.find((x) => x.id === activeId) ??
+        carpetasOrd
+          .flatMap((c) => visible[c.id] ?? [])
+          .find((x) => x.id === activeId) ??
+        null);
 
   const rootRutinas = visible[ROOT] ?? [];
 
-  // SortableContext raíz usa draft-visible para que dnd-kit refleje los
-  // cruces de container en tiempo real.
+  // SortableContext raíz incluye sólo carpetas + rutinas en root. Las rutinas
+  // dentro de carpetas viven en el SortableContext anidado de cada CarpetaCard.
   const rootSortableItems = [
-    ...normalized.carpetasOrd.map((c) => c.id),
+    ...carpetasOrd.map((c) => c.id),
     ...rootRutinas.map((r) => r.id),
   ];
 
@@ -331,7 +371,7 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -342,7 +382,7 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
           strategy={verticalListSortingStrategy}
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {normalized.carpetasOrd.map((carpeta) => (
+            {carpetasOrd.map((carpeta) => (
               <CarpetaCard
                 key={carpeta.id}
                 carpeta={carpeta}
@@ -372,37 +412,26 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
                   }
                 }}
                 onMoveUp={async () => {
-                  const idx = normalized.carpetasOrd.findIndex(
-                    (c) => c.id === carpeta.id
-                  );
+                  const idx = carpetasOrd.findIndex((c) => c.id === carpeta.id);
                   if (idx > 0) {
-                    const reordered = arrayMove(
-                      normalized.carpetasOrd,
-                      idx,
-                      idx - 1
+                    await persistCarpetasOrder(
+                      arrayMove(carpetasOrd, idx, idx - 1)
                     );
-                    await persistCarpetasOrder(reordered);
                   }
                 }}
                 onMoveDown={async () => {
-                  const idx = normalized.carpetasOrd.findIndex(
-                    (c) => c.id === carpeta.id
-                  );
-                  if (idx >= 0 && idx < normalized.carpetasOrd.length - 1) {
-                    const reordered = arrayMove(
-                      normalized.carpetasOrd,
-                      idx,
-                      idx + 1
+                  const idx = carpetasOrd.findIndex((c) => c.id === carpeta.id);
+                  if (idx >= 0 && idx < carpetasOrd.length - 1) {
+                    await persistCarpetasOrder(
+                      arrayMove(carpetasOrd, idx, idx + 1)
                     );
-                    await persistCarpetasOrder(reordered);
                   }
                 }}
                 onOpenRutina={onOpenRutina}
               />
             ))}
 
-            {rootRutinas.length === 0 &&
-            normalized.carpetasOrd.length === 0 ? (
+            {rootRutinas.length === 0 && carpetasOrd.length === 0 ? (
               <EmptyStateCard height={140}>
                 [ SIN RUTINAS // TOCA EL BOTÓN + PARA CREAR LA PRIMERA ]
               </EmptyStateCard>

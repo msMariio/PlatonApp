@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Rutina } from "../../../core/db";
 import { useStableNodeRef } from "../../../hooks/useStableNodeRef";
 import { RutinaTile } from "./RutinaTile";
+import { DragHandle } from "../../../components/DragHandle";
 import { ROOT } from "../data";
 
 type Props = {
@@ -24,6 +25,7 @@ export function SortableRutinaRoot({
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -37,33 +39,22 @@ export function SortableRutinaRoot({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: activeId === rutina.id || isDragging ? 0.4 : 1,
-    touchAction: "none",
-    cursor: "grab",
-    "&:active": { cursor: "grabbing" },
   } as const;
 
   return (
-    <Box
-      ref={safeSetNodeRef}
-      {...attributes}
-      {...listeners}
-      onClick={onOpen}
-      sx={style}
-    >
+    <Box ref={safeSetNodeRef} onClick={onOpen} sx={style}>
       <RutinaTile
         rutina={rutina}
         onEliminar={onEliminar}
         leftAdornment={
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              color: "text.secondary",
-            }}
-            aria-hidden
+          <DragHandle
+            setActivatorNodeRef={setActivatorNodeRef}
+            attributes={attributes}
+            listeners={listeners}
+            label={`Arrastrar rutina ${rutina.nombre}`}
           >
             <DragIndicatorIcon fontSize="small" />
-          </Box>
+          </DragHandle>
         }
       />
     </Box>
