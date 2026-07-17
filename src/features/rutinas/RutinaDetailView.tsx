@@ -34,9 +34,14 @@ import { SelectEjercicioDialog } from "./components/SelectEjercicioDialog";
 type Props = {
   rutinaId: string;
   onBack: () => void;
+  onOpenAnalytics?: (ejercicioId: string) => void;
 };
 
-export function RutinaDetailView({ rutinaId, onBack }: Props) {
+export function RutinaDetailView({
+  rutinaId,
+  onBack,
+  onOpenAnalytics,
+}: Props) {
   const rutina = useLiveQuery(() => db.rutinas.get(rutinaId), [rutinaId]);
   const ejerciciosCatalogo =
     useLiveQuery(() => db.ejercicios.toArray(), []) ?? [];
@@ -204,6 +209,7 @@ export function RutinaDetailView({ rutinaId, onBack }: Props) {
                   onDelete={() => {
                     void handleDeleteEjercicio(e.id);
                   }}
+                  onOpenAnalytics={onOpenAnalytics}
                 />
               ))
             )}

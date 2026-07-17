@@ -24,6 +24,7 @@ export function EmptyStateCard({ children, height = 250, sx }: Props) {
     >
       <Typography
         variant="body2"
+        component="div"
         color="text.secondary"
         sx={{ px: 2, textAlign: "center" }}
       >

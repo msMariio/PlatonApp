@@ -10,6 +10,15 @@ export type GrupoMuscular =
   | "cardio"
   | "fullbody";
 
+export type DiaSemana =
+  | "lunes"
+  | "martes"
+  | "miercoles"
+  | "jueves"
+  | "viernes"
+  | "sabado"
+  | "domingo";
+
 export interface Ejercicio {
   id: string;
   nombre: string;
@@ -51,16 +60,39 @@ export interface Rutina {
   createdAt: string;
 }
 
+export interface SerieReal {
+  peso: number;
+  reps: number;
+  completado: boolean;
+  rpe?: number;
+}
+
+export interface EjercicioReal {
+  ejercicioId: string;
+  series: SerieReal[];
+}
+
 export interface LogEntrenamiento {
   id?: number;
   fecha: string;
   rutinaId: string;
+  /** Nombre snapshot de la rutina. Útil para entrenamientos libres o rutinas borradas. */
+  rutinaSnapshot?: string;
   completado: boolean;
   notas?: string;
-  datosReales?: {
-    ejercicioId: string;
-    series: { peso: number; reps: number; rpe?: number }[];
-  }[];
+  ejercicios: EjercicioReal[];
+}
+
+export interface PlanificacionSemanal {
+  id: string;
+  nombre: string;
+  dias: Record<
+    DiaSemana,
+    {
+      rutinaId: string | null;
+      activo: boolean;
+    }
+  >;
 }
 
 export interface PesoDiario {
@@ -74,8 +106,9 @@ class GymDatabase extends Dexie {
   ejercicios!: Table<Ejercicio>;
   carpetas!: Table<Carpeta>;
   rutinas!: Table<Rutina>;
-  logs!: Table<LogEntrenamiento>;
+  logsEntrenamientos!: Table<LogEntrenamiento>;
   pesos!: Table<PesoDiario>;
+  planificacionSemanal!: Table<PlanificacionSemanal>;
 
   constructor() {
     super("GymTrackerDB");
@@ -103,10 +136,77 @@ class GymDatabase extends Dexie {
         const viejas = (await tx.table<Rutina>("rutinas").toArray()) as Array<
           Partial<Rutina> & { ejercicios?: unknown[] }
         >;
-        const nuevas: Rutina[] = viejas.map((r, i) =>
-          migrateRutina(r, i)
-        );
+        const nuevas: Rutina[] = viejas.map((r, i) => migrateRutina(r, i));
         await tx.table<Rutina>("rutinas").bulkPut(nuevas);
+      });
+
+    // v3: logs -> logsEntrenamientos, planificación semanal
+    this.version(3)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logs: null,
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+      })
+      .upgrade(async (tx) => {
+        // Migrar logs antiguos al nuevo formato con completado por serie
+        const logsViejos = (await tx
+          .table<LogEntrenamiento>("logs")
+          .toArray()) as Array<{
+          id?: number;
+          fecha: string;
+          rutinaId: string;
+          completado: boolean;
+          notas?: string;
+          datosReales?: {
+            ejercicioId: string;
+            series: { peso: number; reps: number; rpe?: number }[];
+          }[];
+        }>;
+
+        const logsMigrados: LogEntrenamiento[] = logsViejos.map((log) => ({
+          id: log.id,
+          fecha: log.fecha,
+          rutinaId: log.rutinaId,
+          completado: log.completado,
+          notas: log.notas,
+          ejercicios:
+            log.datosReales?.map((d) => ({
+              ejercicioId: d.ejercicioId,
+              series: d.series.map((s) => ({
+                peso: s.peso ?? 0,
+                reps: s.reps ?? 0,
+                completado: true,
+                rpe: s.rpe,
+              })),
+            })) ?? [],
+        }));
+
+        if (logsMigrados.length > 0) {
+          await tx.table<LogEntrenamiento>("logsEntrenamientos").bulkAdd(logsMigrados);
+        }
+
+        // Semilla de planificación semanal vacía
+        const planificacion = buildPlanificacionVacia("default");
+        await tx.table<PlanificacionSemanal>("planificacionSemanal").add(planificacion);
+      });
+
+    // v4: snapshot de rutina en logs (schema idéntico a v3, sin migración)
+    this.version(4)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+      })
+      .upgrade(async () => {
+        // Schema idéntico a v3. La migración de logs ya se hizo en v3.
+        // No hay nada que migrar aquí.
       });
   }
 }
@@ -169,7 +269,27 @@ function migrateEjercicioEnRutina(
   };
 }
 
-function uid(): string {
+export function buildPlanificacionVacia(id: string): PlanificacionSemanal {
+  const dias: DiaSemana[] = [
+    "lunes",
+    "martes",
+    "miercoles",
+    "jueves",
+    "viernes",
+    "sabado",
+    "domingo",
+  ];
+  const record = {} as Record<
+    DiaSemana,
+    { rutinaId: string | null; activo: boolean }
+  >;
+  for (const dia of dias) {
+    record[dia] = { rutinaId: null, activo: true };
+  }
+  return { id, nombre: "Planificación por defecto", dias: record };
+}
+
+export function uid(): string {
   const c = globalThis.crypto;
   if (c && typeof c.randomUUID === "function") return c.randomUUID();
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;

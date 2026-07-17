@@ -1,6 +1,7 @@
 import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -15,6 +16,7 @@ type Props = {
   activeId: string | null;
   onChange: (next: EjercicioEnRutina) => void;
   onDelete: () => void;
+  onOpenAnalytics?: (ejercicioId: string) => void;
 };
 
 export function EjercicioEnRutinaCard({
@@ -23,6 +25,7 @@ export function EjercicioEnRutinaCard({
   activeId,
   onChange,
   onDelete,
+  onOpenAnalytics,
 }: Props) {
   const {
     attributes,
@@ -112,6 +115,21 @@ export function EjercicioEnRutinaCard({
                 </Typography>
               )}
             </Box>
+            {onOpenAnalytics && (
+              <IconButton
+                size="small"
+                onClick={() => onOpenAnalytics?.(ejercicio.ejercicioId)}
+                sx={{
+                  color: "text.secondary",
+                  "&:hover": { color: "primary.main" },
+                  borderRadius: 0,
+                  touchAction: "manipulation",
+                }}
+                aria-label="Ver analytics del ejercicio"
+              >
+                <BarChartIcon fontSize="small" />
+              </IconButton>
+            )}
             <IconButton
               size="small"
               onClick={onDelete}

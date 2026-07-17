@@ -4,7 +4,9 @@ import {
   BottomNavigationAction,
   alpha,
 } from "@mui/material";
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+// import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import MonitorWeightRoundedIcon from "@mui/icons-material/MonitorWeightRounded";
 import FitnessCenterRoundedIcon from "@mui/icons-material/FitnessCenterRounded";
 // import SmartToyIcon from "@mui/icons-material/SmartToy";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
@@ -43,9 +45,10 @@ export function AppFooter({ currentTab, onChangeTab }: AppFooterProps) {
           bgcolor: "transparent",
         }}
       >
+        <BottomNavigationAction label="Inicio" icon={<HomeRoundedIcon />} />
         <BottomNavigationAction
           label="Historial"
-          icon={<CalendarTodayIcon />}
+          icon={<MonitorWeightRoundedIcon />}
         />
         <BottomNavigationAction
           label="Rutinas"

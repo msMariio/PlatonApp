@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Box, Button } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import ListAltIcon from "@mui/icons-material/ListAlt";
 import {
   DndContext,
   DragOverlay,
@@ -40,40 +41,98 @@ import { NuevaCarpetaDialog } from "./components/NuevaCarpetaDialog";
 import { NuevaRutinaDialog } from "./components/NuevaRutinaDialog";
 import { RutinaTile } from "./components/RutinaTile";
 import { RutinaDetailView } from "./RutinaDetailView";
+import { EjerciciosMaestrosView } from "./EjerciciosMaestrosView";
+import { EjercicioAnalyticsView } from "../analytics/EjercicioAnalyticsView";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
+
+type RutinasViewState =
+  | { view: "list" }
+  | { view: "rutina"; id: string }
+  | { view: "ejercicios" }
+  | {
+      view: "analytics";
+      ejercicioId: string;
+      backTo?: "list" | "rutina";
+      rutinaId?: string;
+    };
 
 /**
  * Contenedor del feature "Rutinas". Decide si mostrar la lista (DnD de
- * carpetas + rutinas) o el detalle de la rutina abierta.
+ * carpetas + rutinas), el detalle de la rutina abierta, el listado de
+ * ejercicios maestros o las analytics de un ejercicio.
  */
 export function RutinasView() {
   const rutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
-  const [selectedRutinaId, setSelectedRutinaId] = useState<string | null>(null);
+  const [state, setState] = useState<RutinasViewState>({ view: "list" });
 
   // Si la rutina abierta desaparece (borrada desde fuera), salimos del detalle.
-  const abierta = selectedRutinaId
-    ? rutinas.find((r) => r.id === selectedRutinaId)
-    : null;
-  if (selectedRutinaId && !abierta) {
-    setSelectedRutinaId(null);
+  if (state.view === "rutina") {
+    const abierta = rutinas.find((r) => r.id === state.id);
+    if (!abierta) {
+      setState({ view: "list" });
+    }
   }
-  if (selectedRutinaId && abierta) {
+
+  if (state.view === "analytics") {
+    return (
+      <EjercicioAnalyticsView
+        ejercicioId={state.ejercicioId}
+        onBack={() =>
+          setState(
+            state.backTo === "rutina" && state.rutinaId
+              ? { view: "rutina", id: state.rutinaId }
+              : { view: "list" }
+          )
+        }
+      />
+    );
+  }
+
+  if (state.view === "rutina") {
     return (
       <RutinaDetailView
-        rutinaId={selectedRutinaId}
-        onBack={() => setSelectedRutinaId(null)}
+        rutinaId={state.id}
+        onBack={() => setState({ view: "list" })}
+        onOpenAnalytics={(ejercicioId) =>
+          setState({
+            view: "analytics",
+            ejercicioId,
+            backTo: "rutina",
+            rutinaId: state.id,
+          })
+        }
+      />
+    );
+  }
+
+  if (state.view === "ejercicios") {
+    return (
+      <EjerciciosMaestrosView
+        onBack={() => setState({ view: "list" })}
+        onOpenAnalytics={(ejercicioId) =>
+          setState({ view: "analytics", ejercicioId, backTo: "list" })
+        }
       />
     );
   }
 
   return (
-    <RutinasListBody onOpenRutina={(id) => setSelectedRutinaId(id)} />
+    <RutinasListBody
+      onOpenRutina={(id) => setState({ view: "rutina", id })}
+      onOpenEjercicios={() => setState({ view: "ejercicios" })}
+    />
   );
 }
 
-type ListBodyProps = { onOpenRutina: (id: string) => void };
+type ListBodyProps = {
+  onOpenRutina: (id: string) => void;
+  onOpenEjercicios: () => void;
+};
 
-function RutinasListBody({ onOpenRutina }: ListBodyProps) {
+function RutinasListBody({
+  onOpenRutina,
+  onOpenEjercicios,
+}: ListBodyProps) {
   const carpetas = useLiveQuery(() => db.carpetas.toArray(), []) ?? [];
   const rutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
 
@@ -348,6 +407,15 @@ function RutinasListBody({ onOpenRutina }: ListBodyProps) {
         <PageHeader sx={{ flexGrow: 1, mr: "auto !important" }}>
           RUTINAS
         </PageHeader>
+        <Button
+          startIcon={<ListAltIcon />}
+          variant="outlined"
+          color="primary"
+          onClick={onOpenEjercicios}
+          sx={{ touchAction: "manipulation" }}
+        >
+          EJERCICIOS
+        </Button>
         <Button
           startIcon={<CreateNewFolderIcon />}
           variant="outlined"
