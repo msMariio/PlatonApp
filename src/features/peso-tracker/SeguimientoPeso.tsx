@@ -50,11 +50,15 @@ const obtenerHoraActual = () =>
 export function SeguimientoPeso() {
   const theme = useTheme();
   const { pesos, filtrarPesos } = usePesosOrdenados();
-  const [pesoInput, setPesoInput] = useState(0);
+  const [pesoInput, setPesoInput] = useState<number | null>(null);
   const [fechaInput, setFechaInput] = useState(obtenerFechaHoy());
   const [horaInput, setHoraInput] = useState(obtenerHoraActual());
   const [timeframe, setTimeframe] = useState<Timeframe>("7D");
   const [editando, setEditando] = useState<PesoDiario | null>(null);
+
+  // El array viene ordenado cronológicamente (fecha + hora) ascendente,
+  // por lo que el último elemento es el registro más reciente.
+  const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
 
   const pesosFiltrados = filtrarPesos(pesos, timeframe);
 
@@ -71,13 +75,15 @@ export function SeguimientoPeso() {
 
   const handleGuardarPeso = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pesoInput || pesoInput <= 0 || !fechaInput || !horaInput) return;
+    if (pesoInput === null || pesoInput <= 0 || !fechaInput || !horaInput) {
+      return;
+    }
     await db.pesos.add({
       fecha: fechaInput,
       hora: horaInput,
       valor: pesoInput,
     });
-    setPesoInput(0);
+    setPesoInput(null);
     setFechaInput(obtenerFechaHoy());
     setHoraInput(obtenerHoraActual());
   };
@@ -128,7 +134,12 @@ export function SeguimientoPeso() {
                   min={0}
                   step={0.01}
                   value={pesoInput}
-                  onValueChange={(v) => setPesoInput(v ?? 0)}
+                  onValueChange={(v) => setPesoInput(v)}
+                  placeholder={
+                    ultimoPeso
+                      ? Number(ultimoPeso.valor.toFixed(3)).toString()
+                      : undefined
+                  }
                 />
                 <Button
                   type="submit"

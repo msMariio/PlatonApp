@@ -25,6 +25,17 @@ type InputNumberProps = BaseNumberField.Root.Props & {
   size?: "small" | "medium";
   error?: boolean;
   sx?: SxProps<Theme>;
+  /**
+   * Si es `true`, muestra los botones de subir/bajar (flechas) a la derecha
+   * del input. Por defecto es `false` porque en sitios con muchos inputs
+   * (p.ej. las series de un ejercicio) quedan visualmente cargados.
+   */
+  showControls?: boolean;
+  /**
+   * Texto placeholder que se muestra cuando el input está vacío (ej. valor
+   * `null`). Se reenvía al `<input>` subyacente.
+   */
+  placeholder?: string;
 };
 
 export default function InputNumber({
@@ -33,10 +44,13 @@ export default function InputNumber({
   error,
   size = "medium",
   sx,
+  showControls = false,
+  placeholder,
   ...other
 }: InputNumberProps) {
   const id = React.useId();
   const finalId = idProp ?? id;
+
   return (
     <BaseNumberField.Root
       {...other}
@@ -69,46 +83,49 @@ export default function InputNumber({
             onKeyUp={props.onKeyUp}
             onKeyDown={props.onKeyDown}
             onFocus={props.onFocus}
+            placeholder={placeholder}
             slotProps={{
               input: props,
             }}
             endAdornment={
-              <InputAdornment
-                position="end"
-                sx={{
-                  flexDirection: "column",
-                  maxHeight: "unset",
-                  alignSelf: "stretch",
-                  borderLeft: "1px solid",
-                  borderColor: "divider",
-                  ml: 0,
-                  "& button": {
-                    py: 0,
-                    flex: 1,
-                    borderRadius: 0.5,
-                  },
-                }}
-              >
-                <BaseNumberField.Increment
-                  render={<IconButton size={size} aria-label="Increase" />}
+              showControls ? (
+                <InputAdornment
+                  position="end"
+                  sx={{
+                    flexDirection: "column",
+                    maxHeight: "unset",
+                    alignSelf: "stretch",
+                    borderLeft: "1px solid",
+                    borderColor: "divider",
+                    ml: 0,
+                    "& button": {
+                      py: 0,
+                      flex: 1,
+                      borderRadius: 0.5,
+                    },
+                  }}
                 >
-                  <KeyboardArrowUpIcon
-                    fontSize={size}
-                    sx={{ transform: "translateY(2px)" }}
-                  />
-                </BaseNumberField.Increment>
+                  <BaseNumberField.Increment
+                    render={<IconButton size={size} aria-label="Increase" />}
+                  >
+                    <KeyboardArrowUpIcon
+                      fontSize={size}
+                      sx={{ transform: "translateY(2px)" }}
+                    />
+                  </BaseNumberField.Increment>
 
-                <BaseNumberField.Decrement
-                  render={<IconButton size={size} aria-label="Decrease" />}
-                >
-                  <KeyboardArrowDownIcon
-                    fontSize={size}
-                    sx={{ transform: "translateY(-2px)" }}
-                  />
-                </BaseNumberField.Decrement>
-              </InputAdornment>
+                  <BaseNumberField.Decrement
+                    render={<IconButton size={size} aria-label="Decrease" />}
+                  >
+                    <KeyboardArrowDownIcon
+                      fontSize={size}
+                      sx={{ transform: "translateY(-2px)" }}
+                    />
+                  </BaseNumberField.Decrement>
+                </InputAdornment>
+              ) : undefined
             }
-            sx={{ pr: 0 }}
+            sx={showControls ? { pr: 0 } : undefined}
           />
         )}
       />
