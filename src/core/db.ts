@@ -242,7 +242,7 @@ class GymDatabase extends Dexie {
       .upgrade(async (tx) => {
         // Añadir tipo por defecto "fuerza" a ejercicios existentes que no lo tengan
         const ejercicios = await tx.table<Ejercicio>("ejercicios").toArray();
-        const actualizados = ejercicios.filter((e) => !(e as Record<string, unknown>).tipo);
+        const actualizados = ejercicios.filter((e) => !(e as unknown as Record<string, unknown>).tipo);
         if (actualizados.length > 0) {
           await tx
             .table<Ejercicio>("ejercicios")

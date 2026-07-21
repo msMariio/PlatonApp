@@ -5,6 +5,7 @@ import {
   type EjercicioEnRutina,
   type GrupoMuscular,
   type Rutina,
+  type Serie,
   type TipoEjercicio,
 } from "../../core/db";
 

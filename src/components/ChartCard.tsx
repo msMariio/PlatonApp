@@ -105,7 +105,7 @@ export function ChartCard({
             color={color}
             yMin={yMin}
             yMax={yMax}
-            xScaleType={xScaleType}
+            xScaleType={xScaleType === "band" ? "point" : xScaleType}
             xValueFormatter={xValueFormatter}
             xTickMinStep={xTickMinStep}
             xTickMaxStep={xTickMaxStep}
