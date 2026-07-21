@@ -22,7 +22,8 @@
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",

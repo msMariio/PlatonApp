@@ -1,39 +1,98 @@
 import { db, type MensajeChat, type SesionChat } from "../../../core/db";
 import { SYSTEM_PROMPT_PERFORMANCE_OS } from "../../../core/ia-prompts";
+import { TOOL_DECLARATIONS, type FunctionDeclaration } from "./toolDefinitions";
 
 const GEMINI_API_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent";
 
-interface GeminiPart {
+// ── Tipos internos ───────────────────────────────────────────────────
+
+interface GeminiTextPart {
   text: string;
 }
+
+interface GeminiFunctionCallPart {
+  functionCall: {
+    name: string;
+    args: Record<string, unknown>;
+  };
+  thoughtSignature?: string;
+}
+
+interface GeminiFunctionResponsePart {
+  functionResponse: {
+    name: string;
+    response: Record<string, unknown>;
+  };
+}
+
+type GeminiPart =
+  | GeminiTextPart
+  | GeminiFunctionCallPart
+  | GeminiFunctionResponsePart;
 
 interface GeminiContent {
   role: "user" | "model";
   parts: GeminiPart[];
 }
 
+interface GeminiTool {
+  functionDeclarations: FunctionDeclaration[];
+}
+
 interface GeminiRequest {
   system_instruction: {
-    parts: GeminiPart[];
+    parts: GeminiTextPart[];
   };
   contents: GeminiContent[];
+  tools?: GeminiTool[];
 }
 
 interface GeminiResponse {
   candidates?: {
     content?: {
-      parts?: GeminiPart[];
+      parts?: (GeminiTextPart | GeminiFunctionCallPart)[];
     };
+    finishReason?: string;
   }[];
   error?: {
     message: string;
   };
 }
 
+// ── Resultado de enviar mensaje ─────────────────────────────────────
+
+export interface FunctionCallProposal {
+  name: string;
+  args: Record<string, unknown>;
+  /** Firma de pensamiento requerida por Gemini para reenviar el functionCall en turnos posteriores. */
+  thoughtSignature?: string;
+}
+
+export interface GeminiResult {
+  texto: string | null;
+  functionCalls: FunctionCallProposal[];
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function partIsText(
+  p: GeminiTextPart | GeminiFunctionCallPart,
+): p is GeminiTextPart {
+  return "text" in p;
+}
+
+function partIsFunctionCall(
+  p: GeminiTextPart | GeminiFunctionCallPart,
+): p is GeminiFunctionCallPart {
+  return "functionCall" in p;
+}
+
+// ── Snapshot ─────────────────────────────────────────────────────────
+
 /**
- * Construye el LOCAL_SNAPSHOT con datos del atleta (perfil, último peso,
- * historial de entrenamiento de los últimos 28 días) en formato texto.
+ * Construye el LOCAL_SNAPSHOT con datos del atleta (perfil, peso,
+ * ejercicios, rutinas, planificación e historial de entrenamiento).
  */
 async function buildLocalSnapshot(): Promise<string> {
   const perfil = await db.perfil_usuario.get(1);
@@ -61,11 +120,12 @@ async function buildLocalSnapshot(): Promise<string> {
     }
   }
 
-  // Obtener nombres de ejercicios y rutinas para enriquecer el snapshot
+  // Catálogos completos para que la IA los conozca
   const ejercicios = await db.ejercicios.toArray();
   const ejercicioMap = new Map(ejercicios.map((e) => [e.id, e]));
   const rutinas = await db.rutinas.toArray();
   const rutinaMap = new Map(rutinas.map((r) => [r.id, r]));
+  const carpetas = await db.carpetas.toArray();
 
   // Planificación semanal
   const planificacion = await db.planificacionSemanal.get("default");
@@ -93,10 +153,40 @@ async function buildLocalSnapshot(): Promise<string> {
       ultimoPeso != null
         ? `${ultimoPeso.valor} kg (${ultimoPeso.fecha})`
         : "NO_REGISTRADO",
+    CATALOGO_EJERCICIOS: ejercicios.map((e) => ({
+      id: e.id,
+      nombre: e.nombre,
+      grupoMuscular: e.grupoMuscular,
+      tipo: e.tipo,
+      descripcion: e.descripcion ?? "",
+    })),
+    CATALOGO_CARPETAS: carpetas.map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+    })),
+    CATALOGO_RUTINAS: rutinas.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      descripcion: r.descripcion ?? "",
+      carpetaId: r.carpetaId ?? null,
+      carpetaNombre: carpetas.find((c) => c.id === r.carpetaId)?.nombre ?? null,
+      ejercicios: r.ejercicios.map((ej) => {
+        const ejercicio = ejercicioMap.get(ej.ejercicioId);
+        return {
+          ejercicioId: ej.ejercicioId,
+          nombre: ejercicio?.nombre ?? ej.ejercicioId,
+          tipo: ejercicio?.tipo ?? "fuerza",
+          series: ej.series.map((s) => ({
+            repsObjetivo: s.repsObjetivo,
+            pesoObjetivo: s.pesoObjetivo,
+            duracionObjetivoMinutos: s.duracionObjetivoMinutos,
+            distanciaObjetivoKm: s.distanciaObjetivoKm,
+          })),
+        };
+      }),
+    })),
     PLANIFICACION_SEMANAL:
-      planificacion != null
-        ? planSemanal
-        : "NO_CONFIGURADA",
+      planificacion != null ? planSemanal : "NO_CONFIGURADA",
     ENTRENAMIENTOS_ULTIMOS_28_DIAS: logsRecientes.map((log) => ({
       fecha: log.fecha,
       rutina: log.rutinaSnapshot ?? log.rutinaId,
@@ -124,47 +214,55 @@ async function buildLocalSnapshot(): Promise<string> {
   return JSON.stringify(snapshot, null, 2);
 }
 
+// ── Conversión de mensajes al formato Gemini ─────────────────────────
+
 /**
- * Envía un mensaje a Gemini y devuelve la respuesta del modelo.
- * Lanza un error descriptivo si no hay API Key configurada o si la API falla.
+ * Convierte MensajeChat[] al formato contents[] de Gemini,
+ * incluyendo functionCall y functionResponse cuando corresponda.
  */
-export async function enviarMensajeAGemini(
-  mensajeUsuario: string,
-  mensajesPrevios: MensajeChat[],
-): Promise<string> {
-  const perfil = await db.perfil_usuario.get(1);
-  const apiKey = perfil?.apiKeyGemini;
+function mensajesToGeminiContents(mensajes: MensajeChat[]): GeminiContent[] {
+  return mensajes.map((m) => {
+    const parts: GeminiPart[] = [];
 
-  if (!apiKey || apiKey.trim().length === 0) {
-    throw new Error(
-      "[!] API KEY NO CONFIGURADA. Ve a AJUSTES > CONFIGURACIÓN IA y añade tu Gemini API Key.",
-    );
-  }
+    // Si el mensaje tiene functionCall, va como model con functionCall part
+    if (m.functionCall) {
+      const fcPart: GeminiPart = {
+        functionCall: {
+          name: m.functionCall.name,
+          args: m.functionCall.args,
+        },
+      };
+      // Incluir thoughtSignature si está presente (requerido por Gemini)
+      if (m.functionCall.thoughtSignature) {
+        (fcPart as GeminiFunctionCallPart).thoughtSignature =
+          m.functionCall.thoughtSignature;
+      }
+      parts.push(fcPart);
+      // También puede tener texto (la explicación previa del modelo)
+      if (m.texto && m.texto.trim().length > 0) {
+        parts.push({ text: m.texto });
+      }
+    } else if (m.functionResponse) {
+      parts.push({ functionResponse: m.functionResponse });
+    } else if (m.texto && m.texto.trim().length > 0) {
+      parts.push({ text: m.texto });
+    }
 
-  // Construir el LOCAL_SNAPSHOT para inyectar en el system prompt
-  const snapshot = await buildLocalSnapshot();
-
-  const systemInstruction = `${SYSTEM_PROMPT_PERFORMANCE_OS}
-
-================================================================
-LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
-================================================================
-${snapshot}
-
-[//] UTILIZA ESTOS DATOS COMO REFERENCIA EXCLUSIVA. NO INVENTES INFORMACIÓN ADICIONAL.`;
-
-  // Mapear mensajes previos al formato Gemini
-  const contents: GeminiContent[] = mensajesPrevios.map((m) => ({
-    role: m.role,
-    parts: [{ text: m.texto }],
-  }));
-
-  // Añadir el nuevo mensaje del usuario
-  contents.push({
-    role: "user",
-    parts: [{ text: mensajeUsuario }],
+    return {
+      role: m.role,
+      parts,
+    };
   });
+}
 
+// ── Llamada a la API ─────────────────────────────────────────────────
+
+async function callGeminiAPI(
+  apiKey: string,
+  systemInstruction: string,
+  contents: GeminiContent[],
+  includeTools: boolean,
+): Promise<GeminiResponse> {
   const requestBody: GeminiRequest = {
     system_instruction: {
       parts: [{ text: systemInstruction }],
@@ -172,13 +270,15 @@ ${snapshot}
     contents,
   };
 
+  if (includeTools) {
+    requestBody.tools = [{ functionDeclarations: TOOL_DECLARATIONS }];
+  }
+
   const response = await fetch(
     `${GEMINI_API_BASE}?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     },
   );
@@ -199,16 +299,120 @@ ${snapshot}
     throw new Error(`[!] ERROR GEMINI API: ${data.error.message}`);
   }
 
-  const textoRespuesta = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  return data;
+}
 
-  if (!textoRespuesta || textoRespuesta.trim().length === 0) {
+/**
+ * Parsea la respuesta de Gemini extrayendo texto y functionCalls.
+ */
+function parseGeminiResponse(data: GeminiResponse): GeminiResult {
+  const parts = data.candidates?.[0]?.content?.parts ?? [];
+
+  const textos: string[] = [];
+  const functionCalls: FunctionCallProposal[] = [];
+
+  for (const part of parts) {
+    if (partIsText(part)) {
+      textos.push(part.text);
+    } else if (partIsFunctionCall(part)) {
+      functionCalls.push({
+        name: part.functionCall.name,
+        args: part.functionCall.args,
+        thoughtSignature: part.thoughtSignature,
+      });
+    }
+  }
+
+  const texto = textos.length > 0 ? textos.join("\n").trim() : null;
+
+  if (!texto && functionCalls.length === 0) {
     throw new Error(
       "[!] EL MODELO NO GENERÓ RESPUESTA. Revisa los datos e inténtalo de nuevo.",
     );
   }
 
-  return textoRespuesta.trim();
+  return { texto, functionCalls };
 }
+
+// ── API pública ──────────────────────────────────────────────────────
+
+/**
+ * Envía un mensaje del usuario a Gemini y devuelve la respuesta del modelo,
+ * que puede incluir texto y/o llamadas a función (tools).
+ */
+export async function enviarMensajeAGemini(
+  mensajeUsuario: string,
+  mensajesPrevios: MensajeChat[],
+): Promise<GeminiResult> {
+  const perfil = await db.perfil_usuario.get(1);
+  const apiKey = perfil?.apiKeyGemini;
+
+  if (!apiKey || apiKey.trim().length === 0) {
+    throw new Error(
+      "[!] API KEY NO CONFIGURADA. Ve a AJUSTES > CONFIGURACIÓN IA y añade tu Gemini API Key.",
+    );
+  }
+
+  const snapshot = await buildLocalSnapshot();
+
+  const systemInstruction = `${SYSTEM_PROMPT_PERFORMANCE_OS}
+
+================================================================
+LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
+================================================================
+${snapshot}
+
+[//] UTILIZA ESTOS DATOS COMO REFERENCIA EXCLUSIVA. NO INVENTES INFORMACIÓN ADICIONAL.`;
+
+  // Convertir mensajes previos
+  const contents: GeminiContent[] = mensajesToGeminiContents(mensajesPrevios);
+
+  // Añadir el nuevo mensaje del usuario
+  contents.push({
+    role: "user",
+    parts: [{ text: mensajeUsuario }],
+  });
+
+  const data = await callGeminiAPI(apiKey, systemInstruction, contents, true);
+
+  return parseGeminiResponse(data);
+}
+
+/**
+ * Re-envía la conversación completa a Gemini después de que se haya ejecutado
+ * (o cancelado) una función, para que el modelo dé una respuesta final.
+ */
+export async function enviarRespuestaFuncionAGemini(
+  mensajesCompletos: MensajeChat[],
+): Promise<GeminiResult> {
+  const perfil = await db.perfil_usuario.get(1);
+  const apiKey = perfil?.apiKeyGemini;
+
+  if (!apiKey || apiKey.trim().length === 0) {
+    throw new Error(
+      "[!] API KEY NO CONFIGURADA. Ve a AJUSTES > CONFIGURACIÓN IA y añade tu Gemini API Key.",
+    );
+  }
+
+  const snapshot = await buildLocalSnapshot();
+
+  const systemInstruction = `${SYSTEM_PROMPT_PERFORMANCE_OS}
+
+================================================================
+LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
+================================================================
+${snapshot}
+
+[//] UTILIZA ESTOS DATOS COMO REFERENCIA EXCLUSIVA. NO INVENTES INFORMACIÓN ADICIONAL.`;
+
+  const contents = mensajesToGeminiContents(mensajesCompletos);
+
+  const data = await callGeminiAPI(apiKey, systemInstruction, contents, true);
+
+  return parseGeminiResponse(data);
+}
+
+// ── Gestión de sesiones ──────────────────────────────────────────────
 
 /**
  * Crea una nueva sesión de chat con un título por defecto basado en la fecha.

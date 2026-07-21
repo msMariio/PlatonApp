@@ -229,6 +229,7 @@ export function PerfilView() {
             >
               [ OBTENER API KEY GRATIS → GOOGLE AI STUDIO ]
             </Link>
+
           </Stack>
         </CardContent>
       </Card>

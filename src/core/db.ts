@@ -129,11 +129,27 @@ export interface PerfilUsuario {
   apiKeyGemini?: string;
 }
 
+export interface FunctionCallPart {
+  name: string;
+  args: Record<string, unknown>;
+  /** Firma de pensamiento requerida por Gemini para reenviar functionCalls en turnos posteriores. */
+  thoughtSignature?: string;
+}
+
+export interface FunctionResponsePart {
+  name: string;
+  response: Record<string, unknown>;
+}
+
 export interface MensajeChat {
   id: string;
   role: "user" | "model";
   texto: string;
   timestamp: string;
+  /** Datos de una llamada a función propuesta por el modelo (Gemini functionCall). */
+  functionCall?: FunctionCallPart;
+  /** Respuesta del sistema tras ejecutar una función (Gemini functionResponse). */
+  functionResponse?: FunctionResponsePart;
 }
 
 export interface SesionChat {
