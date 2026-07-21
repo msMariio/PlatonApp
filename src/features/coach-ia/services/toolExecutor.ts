@@ -110,8 +110,8 @@ async function ejecutarEditarCarpeta(args: EditarCarpetaArgs): Promise<{ id: str
       .first();
   }
   if (!encontrada) throw new Error("Carpeta no encontrada. Indica el ID o nombre de la carpeta a editar.");
-  await db.carpetas.update(encontrada.id, { nombre: args.nombre });
-  return { id: encontrada.id, nombre: args.nombre };
+  await db.carpetas.update(encontrada.id, { nombre: args.nombre! });
+  return { id: encontrada.id, nombre: args.nombre! };
 }
 
 async function ejecutarEditarEjercicio(args: EditarEjercicioArgs): Promise<{ id: string; nombre: string }> {
@@ -129,7 +129,8 @@ async function ejecutarEditarEjercicio(args: EditarEjercicioArgs): Promise<{ id:
   if (args.descripcion !== undefined) cambios.descripcion = args.descripcion;
   if (args.tipo !== undefined) cambios.tipo = args.tipo;
 
-  await db.ejercicios.update(encontrado.id, cambios);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await db.ejercicios.update(encontrado.id, cambios as any);
   return { id: encontrado.id, nombre: (args.nombre ?? encontrado.nombre) as string };
 }
 
@@ -146,7 +147,8 @@ async function ejecutarEditarRutina(args: EditarRutinaArgs): Promise<{ id: strin
   if (args.nombre !== undefined) cambios.nombre = args.nombre;
   if (args.descripcion !== undefined) cambios.descripcion = args.descripcion;
 
-  await db.rutinas.update(encontrada.id, cambios);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await db.rutinas.update(encontrada.id, cambios as any);
   return { id: encontrada.id, nombre: (args.nombre ?? encontrada.nombre) as string };
 }
 
