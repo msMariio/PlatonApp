@@ -106,6 +106,7 @@ export function EjerciciosMaestrosView({ onBack, onOpenAnalytics }: Props) {
           setCreando(false);
           onOpenAnalytics(id);
         }}
+        startCreating
       />
     </Box>
   );

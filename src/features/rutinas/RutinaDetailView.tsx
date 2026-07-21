@@ -100,7 +100,8 @@ export function RutinaDetailView({
   };
 
   const handleAddEjercicio = async (ejercicioId: string) => {
-    const nuevo = buildEjercicioInicial(ejercicioId);
+    const tipo = catalogoLookup.get(ejercicioId)?.tipo;
+    const nuevo = buildEjercicioInicial(ejercicioId, 3, tipo);
     const next = [...ejercicios, { ...nuevo, order: ejercicios.length }];
     await setEjerciciosEnRutina(
       rutinaId,

@@ -20,10 +20,11 @@ export async function guardarLogEntrenamiento(
   rutinaId: string,
   ejercicios: EjercicioReal[],
   rutinaSnapshot?: string,
-  notas?: string
+  notas?: string,
+  fecha?: string
 ): Promise<number> {
   const log: LogEntrenamiento = {
-    fecha: new Date().toISOString(),
+    fecha: fecha ?? new Date().toISOString(),
     rutinaId,
     rutinaSnapshot,
     completado: ejercicios.every((ej) =>
@@ -51,6 +52,9 @@ export function buildEjerciciosRealesDesdeRutina(
         return {
           peso: 0,
           reps: 0,
+          duracionMinutos: 0,
+          distanciaKm: 0,
+          nivelInclinacion: 0,
           completado: false,
           rpe: s.rpeObjetivo ?? logSerie?.rpe,
         };
@@ -64,12 +68,26 @@ export function getPlaceholderSerie(
   serieIdx: number,
   rutina: Rutina,
   ultimoLog?: LogEntrenamiento
-): { peso: number; reps: number } {
+): {
+  peso: number;
+  reps: number;
+  duracionMinutos?: number;
+  distanciaKm?: number;
+  nivelInclinacion?: number;
+} {
   // Prioridad 1: último log de esta rutina para este ejercicio/serie
-  const logEj = ultimoLog?.ejercicios.find((e) => e.ejercicioId === ejercicioId);
+  const logEj = ultimoLog?.ejercicios.find(
+    (e) => e.ejercicioId === ejercicioId
+  );
   const logSerie = logEj?.series[serieIdx];
   if (logSerie) {
-    return { peso: logSerie.peso, reps: logSerie.reps };
+    return {
+      peso: logSerie.peso ?? 0,
+      reps: logSerie.reps ?? 0,
+      duracionMinutos: logSerie.duracionMinutos,
+      distanciaKm: logSerie.distanciaKm,
+      nivelInclinacion: logSerie.nivelInclinacion,
+    };
   }
 
   // Prioridad 2: objetivo de la rutina
@@ -86,13 +104,19 @@ export function getPlaceholderSerie(
 }
 
 export function serieTieneValores(serie: SerieReal): boolean {
-  return serie.peso > 0 || serie.reps > 0;
+  return (
+    (serie.peso ?? 0) > 0 ||
+    (serie.reps ?? 0) > 0 ||
+    (serie.duracionMinutos ?? 0) > 0 ||
+    (serie.distanciaKm ?? 0) > 0
+  );
 }
 
 export async function actualizarLogEntrenamiento(
   logId: number,
   ejercicios: EjercicioReal[],
-  notas?: string
+  notas?: string,
+  fecha?: string
 ): Promise<void> {
   const existing = await db.logsEntrenamientos.get(logId);
   if (!existing) return;
@@ -105,6 +129,9 @@ export async function actualizarLogEntrenamiento(
   };
   if (notas !== undefined) {
     updated.notas = notas;
+  }
+  if (fecha !== undefined) {
+    updated.fecha = fecha;
   }
   await db.logsEntrenamientos.put(updated);
 }

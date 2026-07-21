@@ -1,5 +1,6 @@
 import { Card, CardContent, Stack } from "@mui/material";
 import { ChartLine } from "./ChartLine";
+import { ChartBar } from "./ChartBar";
 import { TimeframeSelector, type Timeframe } from "./TimeframeSelector";
 import { SectionLabel } from "./SectionLabel";
 import { EmptyStateCard } from "./EmptyStateCard";
@@ -15,7 +16,7 @@ type ChartCardProps = {
   color?: string;
   yMin?: number;
   yMax?: number;
-  xScaleType?: "time" | "point";
+  xScaleType?: "time" | "point" | "band";
   xValueFormatter?: (
     value: Date | string | number,
     context?: {
@@ -29,6 +30,8 @@ type ChartCardProps = {
   emptyMessage?: string;
   /** Altura del chart en px cuando hay datos */
   chartHeight?: number;
+  /** Tipo de gráfico: "line" (default) o "bar" */
+  chartType?: "line" | "bar";
 };
 
 /**
@@ -50,9 +53,10 @@ export function ChartCard({
   xValueFormatter,
   xTickMinStep,
   xTickMaxStep,
-  minPoints = 2,
-  emptyMessage = "[ INSUFICIENTES DATOS // INGRESA MÍNIMO 2 REGISTROS ]",
+  minPoints = 1,
+  emptyMessage = "[ SIN DATOS // REGISTRA AL MENOS 1 SESIÓN ]",
   chartHeight = 300,
+  chartType = "line",
 }: ChartCardProps) {
   const showTimeframe =
     timeframe !== undefined && onTimeframeChange !== undefined;
@@ -79,6 +83,20 @@ export function ChartCard({
 
         {isEmpty ? (
           <EmptyStateCard height={chartHeight}>{emptyMessage}</EmptyStateCard>
+        ) : chartType === "bar" ? (
+          <ChartBar
+            xData={xData}
+            yData={yData}
+            seriesLabel={seriesLabel}
+            color={color}
+            yMin={yMin}
+            yMax={yMax}
+            xScaleType={xScaleType as "band" | "point" | "linear" | "time" | undefined}
+            xValueFormatter={xValueFormatter}
+            xTickMinStep={xTickMinStep}
+            xTickMaxStep={xTickMaxStep}
+            height={chartHeight}
+          />
         ) : (
           <ChartLine
             xData={xData}

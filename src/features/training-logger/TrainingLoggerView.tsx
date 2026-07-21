@@ -23,6 +23,7 @@ import {
 } from "../../core/db";
 import { PageHeader } from "../../components/PageHeader";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
+import { AppTextField } from "../../components/AppTextField";
 import { SelectEjercicioDialog } from "../rutinas/components/SelectEjercicioDialog";
 import { EjercicioLoggerCard } from "./components/EjercicioLoggerCard";
 import {
@@ -74,6 +75,7 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   const [notas, setNotas] = useState("");
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
 
   // Snapshot of the initial state to detect unsaved changes
   const initialSnapshot = useRef<string>("");
@@ -89,9 +91,12 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         if (logExistente) {
           setEjercicios(logExistente.ejercicios);
           setNotas(logExistente.notas ?? "");
+          const fechaLog = new Date(logExistente.fecha).toISOString().split("T")[0];
+          setFecha(fechaLog);
           initialSnapshot.current = JSON.stringify({
             ejercicios: logExistente.ejercicios,
             notas: logExistente.notas ?? "",
+            fecha: fechaLog,
           });
           setInitialized(true);
           return;
@@ -112,6 +117,7 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         initialSnapshot.current = JSON.stringify({
           ejercicios: iniciales,
           notas: "",
+          fecha: new Date().toISOString().split("T")[0],
         });
         setInitialized(true);
       }
@@ -123,9 +129,9 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   }, [rutina, rutinaId, initialized, isCustomLibre, isEditMode, logId]);
 
   const isDirty = useMemo(() => {
-    const current = JSON.stringify({ ejercicios, notas });
+    const current = JSON.stringify({ ejercicios, notas, fecha });
     return current !== initialSnapshot.current;
-  }, [ejercicios, notas]);
+  }, [ejercicios, notas, fecha]);
 
   const handleBackClick = useCallback(() => {
     if (isDirty) {
@@ -163,27 +169,36 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
       ...prev,
       {
         ejercicioId,
-        series: [{ peso: 0, reps: 0, completado: false }],
+        series: [
+          { peso: 0, reps: 0, duracionMinutos: 0, distanciaKm: 0, nivelInclinacion: 0, completado: false },
+        ],
       },
     ]);
     setSelectOpen(false);
   };
 
+  const handleDeleteEjercicio = (idx: number) => {
+    setEjercicios((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const handleGuardar = async () => {
     if (!rutina) return;
     setGuardando(true);
+    // Build ISO datetime from date and current time (or noon for past dates)
+    const fechaISO = new Date(fecha + "T12:00:00").toISOString();
     if (isEditMode && logId !== undefined) {
-      await actualizarLogEntrenamiento(logId, ejercicios, notas);
+      await actualizarLogEntrenamiento(logId, ejercicios, notas, fechaISO);
     } else {
       await guardarLogEntrenamiento(
         rutinaId,
         ejercicios,
         isCustomLibre ? rutina.nombre : undefined,
-        notas || undefined
+        notas || undefined,
+        fechaISO
       );
     }
     // Update snapshot after saving so dirty check resets
-    initialSnapshot.current = JSON.stringify({ ejercicios, notas });
+    initialSnapshot.current = JSON.stringify({ ejercicios, notas, fecha });
     setGuardando(false);
     onSaved?.();
   };
@@ -237,6 +252,14 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
           : "REGISTRA LAS SERIES REALES. EL CHECK AUTO-RELLENA EL PLACEHOLDER."}
       </Typography>
 
+      <AppTextField
+        type="date"
+        label="FECHA DEL ENTRENAMIENTO"
+        fullWidth
+        value={fecha}
+        onChange={(e) => setFecha(e.target.value)}
+      />
+
       {ejercicios.length === 0 ? (
         <EmptyStateCard height={160}>
           {isCustomLibre
@@ -255,6 +278,7 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
               catalog={catalogoLookup.get(ej.ejercicioId)}
               placeholders={seriesPlaceholders}
               onChange={(next) => handleChangeEjercicio(idx, next)}
+              onDelete={() => handleDeleteEjercicio(idx)}
             />
           );
         })

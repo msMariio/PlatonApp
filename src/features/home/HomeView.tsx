@@ -38,6 +38,7 @@ import {
   type DiaSemana,
   type LogEntrenamiento,
   type Ejercicio,
+  type TipoEjercicio,
 } from "../../core/db";
 import {
   getPlanificacionDefault,
@@ -47,6 +48,20 @@ import {
   DIAS_SEMANA,
 } from "./data";
 import { actualizarLogEntrenamiento } from "../training-logger/data";
+
+const TIPO_LABEL: Record<TipoEjercicio, string> = {
+  fuerza: "FUERZA",
+  cardio: "CARDIO",
+  tiempo: "TIEMPO",
+  calistenia: "CALIST",
+};
+
+const TIPO_COLOR: Record<TipoEjercicio, string> = {
+  fuerza: "#f44336",
+  cardio: "#4caf50",
+  tiempo: "#2196f3",
+  calistenia: "#ff9800",
+};
 
 type HomeViewProps = {
   onStartTraining: (rutinaId: string, logId?: number) => void;
@@ -97,6 +112,20 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     await setRutinaDelDia(dia, rutinaId);
   };
 
+  const getTiposRutina = (
+    rutinaId: string | null
+  ): TipoEjercicio[] => {
+    if (!rutinaId) return [];
+    const rutina = rutinas.find((r) => r.id === rutinaId);
+    if (!rutina) return [];
+    const tipos = new Set<TipoEjercicio>();
+    for (const ej of rutina.ejercicios) {
+      const t = catalogoLookup.get(ej.ejercicioId)?.tipo;
+      if (t) tipos.add(t);
+    }
+    return [...tipos].sort();
+  };
+
   const getNombreRutina = (rutinaId: string | null) => {
     if (!rutinaId) return "DÍA DE DESCANSO";
     if (rutinaId === "custom-libre") return "ENTRENAMIENTO LIBRE";
@@ -132,18 +161,94 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     [notasEditando],
   );
 
+  const getTipoEjercicio = (ejercicioId: string): TipoEjercicio => {
+    return catalogoLookup.get(ejercicioId)?.tipo ?? "fuerza";
+  };
+
   const calcularVolumenTotal = (log: LogEntrenamiento): number => {
     return log.ejercicios.reduce((acc, ej) => {
       return (
         acc +
         ej.series.reduce((sAcc, s) => {
           if (s.completado) {
-            return sAcc + s.peso * s.reps;
+            return sAcc + (s.peso ?? 0) * (s.reps ?? 0);
           }
           return sAcc;
         }, 0)
       );
     }, 0);
+  };
+
+  const calcularCardioTotales = (
+    log: LogEntrenamiento
+  ): { minutos: number; distancia: number } => {
+    return log.ejercicios.reduce(
+      (acc, ej) => {
+        const tipo = getTipoEjercicio(ej.ejercicioId);
+        if (tipo !== "cardio" && tipo !== "tiempo") return acc;
+        return ej.series.reduce((sAcc, s) => {
+          if (!s.completado) return sAcc;
+          return {
+            minutos: sAcc.minutos + (s.duracionMinutos ?? 0),
+            distancia: sAcc.distancia + (s.distanciaKm ?? 0),
+          };
+        }, acc);
+      },
+      { minutos: 0, distancia: 0 }
+    );
+  };
+
+  const hasCardioEjercicios = (log: LogEntrenamiento): boolean => {
+    return log.ejercicios.some((ej) => {
+      const tipo = getTipoEjercicio(ej.ejercicioId);
+      return tipo === "cardio" || tipo === "tiempo";
+    });
+  };
+
+  const formatSerieDisplay = (
+    s: LogEntrenamiento["ejercicios"][number]["series"][number],
+    tipo: TipoEjercicio
+  ): string => {
+    if (!s.completado) return "NO COMPLETADA";
+    if (tipo === "cardio") {
+      const min = (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
+      const km = (s.distanciaKm ?? 0) > 0 ? `${s.distanciaKm}km` : "";
+      return [min, km].filter(Boolean).join(" // ") || "—";
+    }
+    if (tipo === "tiempo") {
+      const min = (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
+      const kg = (s.peso ?? 0) > 0 ? `${s.peso}kg` : "";
+      return [min, kg].filter(Boolean).join(" // ") || "—";
+    }
+    // fuerza / calistenia
+    const kg = (s.peso ?? 0) > 0 ? `${s.peso}kg` : "—";
+    const reps = (s.reps ?? 0) > 0 ? `${s.reps}` : "—";
+    return `${kg} × ${reps}`;
+  };
+
+  const formatSerieChip = (
+    s: LogEntrenamiento["ejercicios"][number]["series"][number],
+    tipo: TipoEjercicio
+  ): string | null => {
+    if (!s.completado) return null;
+    if (tipo === "cardio") {
+      const km = s.distanciaKm ?? 0;
+      return km > 0 ? `${km}km` : null;
+    }
+    if (tipo === "tiempo") {
+      const min = s.duracionMinutos ?? 0;
+      return min > 0 ? `${min}min` : null;
+    }
+    const vol = (s.peso ?? 0) * (s.reps ?? 0);
+    return vol > 0 ? `${vol}kg` : null;
+  };
+
+  const necesitaChipFuerza = (
+    s: LogEntrenamiento["ejercicios"][number]["series"][number],
+    tipo: TipoEjercicio
+  ): boolean => {
+    if (tipo === "cardio" || tipo === "tiempo") return false;
+    return (s.peso ?? 0) * (s.reps ?? 0) > 0;
   };
 
   const getNombreEjercicio = (ejercicioId: string): string => {
@@ -214,6 +319,8 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     total: number,
   ) => {
     const volumenTotal = calcularVolumenTotal(log);
+    const cardioTotales = calcularCardioTotales(log);
+    const hayCardio = hasCardioEjercicios(log);
     const nombreRutina = getNombreRutinaFromLog(log);
     const esNotasEditando = notasEditando?.logId === log.id;
 
@@ -288,51 +395,68 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                   </Box>
                   <Collapse in={!isCollapsed}>
                     <Stack spacing={0.5}>
-                      {ej.series.map((s, sIdx) => (
-                        <Box
-                          key={sIdx}
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            pl: 1,
-                          }}
-                        >
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ minWidth: 20 }}
+                      {ej.series.map((s, sIdx) => {
+                        const tipoEj = getTipoEjercicio(ej.ejercicioId);
+                        const chipLabel = formatSerieChip(s, tipoEj);
+                        const showChipFuerza =
+                          necesitaChipFuerza(s, tipoEj);
+                        return (
+                          <Box
+                            key={sIdx}
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                              pl: 1,
+                            }}
                           >
-                            S{sIdx + 1}
-                          </Typography>
-                          {s.completado ? (
-                            <Typography variant="body2">
-                              {s.peso > 0 ? `${s.peso}kg` : "—"} ×{" "}
-                              {s.reps > 0 ? `${s.reps}` : "—"}
-                            </Typography>
-                          ) : (
                             <Typography
-                              variant="body2"
+                              variant="caption"
                               color="text.secondary"
-                              sx={{ fontStyle: "italic" }}
+                              sx={{ minWidth: 20 }}
                             >
-                              NO COMPLETADA
+                              S{sIdx + 1}
                             </Typography>
-                          )}
-                          {s.completado && s.peso > 0 && s.reps > 0 && (
-                            <Chip
-                              label={`${s.peso * s.reps}kg`}
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                borderRadius: 0,
-                                fontSize: "0.65rem",
-                                height: 18,
-                              }}
-                            />
-                          )}
-                        </Box>
-                      ))}
+                            {s.completado ? (
+                              <Typography variant="body2">
+                                {formatSerieDisplay(s, tipoEj)}
+                              </Typography>
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ fontStyle: "italic" }}
+                              >
+                                NO COMPLETADA
+                              </Typography>
+                            )}
+                            {chipLabel && !showChipFuerza && (
+                              <Chip
+                                label={chipLabel}
+                                size="small"
+                                variant="outlined"
+                                sx={{
+                                  borderRadius: 0,
+                                  fontSize: "0.65rem",
+                                  height: 18,
+                                }}
+                              />
+                            )}
+                            {s.completado && showChipFuerza && (
+                              <Chip
+                                label={`${(s.peso ?? 0) * (s.reps ?? 0)}kg`}
+                                size="small"
+                                variant="outlined"
+                                sx={{
+                                  borderRadius: 0,
+                                  fontSize: "0.65rem",
+                                  height: 18,
+                                }}
+                              />
+                            )}
+                          </Box>
+                        );
+                      })}
                     </Stack>
                   </Collapse>
                 </Box>
@@ -376,25 +500,78 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
 
           <Divider />
 
-          {/* Volumen total */}
+          {/* Resumen: Volumen + Cardio */}
           <Box
             sx={{
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
+              flexDirection: "column",
+              gap: 1,
               p: 1.5,
               bgcolor: "action.hover",
             }}
           >
-            <Typography variant="button" color="text.secondary">
-              VOLUMEN TOTAL
-            </Typography>
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: "bold", color: "primary.main" }}
-            >
-              {volumenTotal.toLocaleString("es-ES")} kg
-            </Typography>
+            {volumenTotal > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="button" color="text.secondary">
+                  VOLUMEN TOTAL
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "primary.main" }}
+                >
+                  {volumenTotal.toLocaleString("es-ES")} kg
+                </Typography>
+              </Box>
+            )}
+            {cardioTotales.minutos > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="button" color="text.secondary">
+                  MINUTOS TOTALES
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "primary.main" }}
+                >
+                  {cardioTotales.minutos.toLocaleString("es-ES")} min
+                </Typography>
+              </Box>
+            )}
+            {cardioTotales.distancia > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="button" color="text.secondary">
+                  DISTANCIA TOTAL
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "primary.main" }}
+                >
+                  {cardioTotales.distancia.toLocaleString("es-ES")} km
+                </Typography>
+              </Box>
+            )}
+            {volumenTotal === 0 && !hayCardio && (
+              <Typography variant="button" color="text.secondary">
+                SIN DATOS
+              </Typography>
+            )}
           </Box>
 
           {/* Notas */}
@@ -614,7 +791,10 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
         <CardContent>
           <SectionLabel sx={{ mb: 2 }}>PLANIFICACIÓN SEMANAL</SectionLabel>
           <Stack spacing={2}>
-            {DIAS_SEMANA.map((dia) => (
+            {DIAS_SEMANA.map((dia) => {
+              const rutinaId = plan?.dias[dia]?.rutinaId ?? null;
+              const tipos = getTiposRutina(rutinaId);
+              return (
               <Box
                 key={dia}
                 sx={{
@@ -643,7 +823,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                   <InputLabel id={`plan-${dia}-label`}>RUTINA</InputLabel>
                   <Select
                     labelId={`plan-${dia}-label`}
-                    value={plan?.dias[dia]?.rutinaId ?? ""}
+                    value={rutinaId ?? ""}
                     label="RUTINA"
                     onChange={(e) =>
                       handlePlanChange(
@@ -662,8 +842,29 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                     ))}
                   </Select>
                 </FormControl>
+                {tipos.length > 0 && (
+                  <Box sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}>
+                    {tipos.map((t) => (
+                      <Chip
+                        key={t}
+                        label={TIPO_LABEL[t]}
+                        size="small"
+                        sx={{
+                          borderRadius: 0,
+                          fontSize: "0.6rem",
+                          height: 18,
+                          bgcolor: TIPO_COLOR[t],
+                          color: "#fff",
+                          fontWeight: "bold",
+                          letterSpacing: "0.03em",
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
               </Box>
-            ))}
+              );
+            })}
           </Stack>
         </CardContent>
       </Card>

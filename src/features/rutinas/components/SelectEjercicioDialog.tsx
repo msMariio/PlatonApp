@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -13,10 +13,14 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type GrupoMuscular } from "../../../core/db";
+import { db, type GrupoMuscular, type TipoEjercicio } from "../../../core/db";
 import { crearEjercicio } from "../data";
 import { AppTextField } from "../../../components/AppTextField";
 
@@ -25,6 +29,8 @@ type Props = {
   onClose: () => void;
   /** Devuelve el ejercicioId (existente o recién creado). */
   onPick: (ejercicioId: string) => void;
+  /** Si true, arranca directamente en el formulario de creación, saltando la lista. */
+  startCreating?: boolean;
 };
 
 const GRUPOS: GrupoMuscular[] = [
@@ -38,18 +44,31 @@ const GRUPOS: GrupoMuscular[] = [
   "fullbody",
 ];
 
-export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
+export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = false }: Props) {
   const ejercicios = useLiveQuery(() => db.ejercicios.toArray(), []) ?? [];
   const [filtro, setFiltro] = useState("");
-  const [creando, setCreando] = useState(false);
+  const [creando, setCreando] = useState(startCreating);
   const [grupoSel, setGrupoSel] = useState<GrupoMuscular>("pecho");
+  const [tipoSel, setTipoSel] = useState<TipoEjercicio>("fuerza");
   const [nombreNuevo, setNombreNuevo] = useState("");
   const [descNuevo, setDescNuevo] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setFiltro("");
+      setCreando(startCreating);
+      setGrupoSel("pecho");
+      setTipoSel("fuerza");
+      setNombreNuevo("");
+      setDescNuevo("");
+    }
+  }, [open, startCreating]);
 
   const resetForm = () => {
     setFiltro("");
     setCreando(false);
     setGrupoSel("pecho");
+    setTipoSel("fuerza");
     setNombreNuevo("");
     setDescNuevo("");
   };
@@ -76,6 +95,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
       nombre: limpio,
       grupoMuscular: grupoSel,
       descripcion: descNuevo.trim() || undefined,
+      tipo: tipoSel,
     });
     resetForm();
     onPick(id);
@@ -125,6 +145,20 @@ export function SelectEjercicioDialog({ open, onClose, onPick }: Props) {
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
+            <FormControl size="small">
+              <InputLabel>TIPO</InputLabel>
+              <Select
+                value={tipoSel}
+                label="TIPO"
+                onChange={(e) => setTipoSel(e.target.value as TipoEjercicio)}
+                sx={{ borderRadius: 0 }}
+              >
+                <MenuItem value="fuerza">FUERZA</MenuItem>
+                <MenuItem value="cardio">CARDIO</MenuItem>
+                <MenuItem value="tiempo">TIEMPO</MenuItem>
+                <MenuItem value="calistenia">CALISTENIA</MenuItem>
+              </Select>
+            </FormControl>
             <AppTextField
               label="DESCRIPCIÓN (opcional)"
               multiline

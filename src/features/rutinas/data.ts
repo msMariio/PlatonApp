@@ -5,6 +5,7 @@ import {
   type EjercicioEnRutina,
   type GrupoMuscular,
   type Rutina,
+  type TipoEjercicio,
 } from "../../core/db";
 
 export type ContainerId = "ROOT" | string;
@@ -141,24 +142,34 @@ export async function crearEjercicio(input: {
   nombre: string;
   grupoMuscular: GrupoMuscular;
   descripcion?: string;
+  tipo?: TipoEjercicio;
 }): Promise<string> {
   const id = uid();
-  const ej: Ejercicio = { ...input, id };
+  const ej: Ejercicio = { ...input, tipo: input.tipo ?? "fuerza", id };
   await db.ejercicios.add(ej);
   return id;
 }
 
-/** Construye un EjercicioEnRutina inicial con 3 series de 8 reps. */
+/** Construye un EjercicioEnRutina inicial con series por defecto según el tipo. */
 export function buildEjercicioInicial(
   ejercicioId: string,
-  numSeriesDefault = 3
+  numSeriesDefault = 3,
+  tipo?: TipoEjercicio
 ): EjercicioEnRutina {
+  const defaultSerie = (): Serie => {
+    if (tipo === "cardio") {
+      return { duracionObjetivoMinutos: 30 };
+    }
+    if (tipo === "tiempo") {
+      return { duracionObjetivoMinutos: 60 };
+    }
+    // fuerza / calistenia / undefined
+    return { repsObjetivo: 8 };
+  };
   return {
     id: uid(),
     ejercicioId,
-    series: Array.from({ length: numSeriesDefault }, () => ({
-      repsObjetivo: 8,
-    })),
+    series: Array.from({ length: numSeriesDefault }, () => defaultSerie()),
     order: 0,
   };
 }

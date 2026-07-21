@@ -5,7 +5,7 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Ejercicio, EjercicioEnRutina, Serie } from "../../../core/db";
+import type { Ejercicio, EjercicioEnRutina, Serie, TipoEjercicio } from "../../../core/db";
 import { useStableNodeRef } from "../../../hooks/useStableNodeRef";
 import InputNumber from "../../../components/InputNumber";
 import { DragHandle } from "../../../components/DragHandle";
@@ -19,6 +19,12 @@ type Props = {
   onOpenAnalytics?: (ejercicioId: string) => void;
 };
 
+function buildDefaultSerie(tipo: TipoEjercicio): Serie {
+  if (tipo === "cardio") return { duracionObjetivoMinutos: 30 };
+  if (tipo === "tiempo") return { duracionObjetivoMinutos: 60 };
+  return { repsObjetivo: 8 };
+}
+
 export function EjercicioEnRutinaCard({
   ejercicio,
   catalog,
@@ -27,6 +33,8 @@ export function EjercicioEnRutinaCard({
   onDelete,
   onOpenAnalytics,
 }: Props) {
+  const tipo: TipoEjercicio = catalog?.tipo ?? "fuerza";
+
   const {
     attributes,
     listeners,
@@ -56,7 +64,7 @@ export function EjercicioEnRutinaCard({
 
   const handleAddSerie = () => {
     const ult = ejercicio.series[ejercicio.series.length - 1];
-    const nueva: Serie = ult ? { ...ult } : { repsObjetivo: 8 };
+    const nueva: Serie = ult ? { ...ult } : buildDefaultSerie(tipo);
     onChange({
       ...ejercicio,
       series: [...ejercicio.series, nueva],
@@ -68,6 +76,106 @@ export function EjercicioEnRutinaCard({
       ...ejercicio,
       series: ejercicio.series.filter((_, i) => i !== idx),
     });
+  };
+
+  const renderSerieInputs = (s: Serie, idx: number) => {
+    if (tipo === "cardio") {
+      return (
+        <>
+          <InputNumber
+            size="small"
+            label="MINUTOS"
+            min={0}
+            step={1}
+            value={s.duracionObjetivoMinutos ?? 0}
+            onValueChange={(v) =>
+              handleSerieChange(idx, { duracionObjetivoMinutos: v ?? 0 })
+            }
+            sx={{ flex: 1 }}
+          />
+          <InputNumber
+            size="small"
+            label="DIST. KM"
+            min={0}
+            step={0.1}
+            value={s.distanciaObjetivoKm ?? 0}
+            onValueChange={(v) =>
+              handleSerieChange(idx, { distanciaObjetivoKm: v ?? 0 })
+            }
+            sx={{ flex: 1 }}
+          />
+        </>
+      );
+    }
+
+    if (tipo === "tiempo") {
+      return (
+        <>
+          <InputNumber
+            size="small"
+            label="MINUTOS"
+            min={0}
+            step={1}
+            value={s.duracionObjetivoMinutos ?? 0}
+            onValueChange={(v) =>
+              handleSerieChange(idx, { duracionObjetivoMinutos: v ?? 0 })
+            }
+            sx={{ flex: 1 }}
+          />
+          <InputNumber
+            size="small"
+            label="LASTRE KG"
+            min={0}
+            step={0.5}
+            value={s.pesoObjetivo ?? 0}
+            onValueChange={(v) =>
+              handleSerieChange(idx, { pesoObjetivo: v ?? 0 })
+            }
+            sx={{ flex: 1 }}
+          />
+        </>
+      );
+    }
+
+    // fuerza / calistenia
+    return (
+      <>
+        <InputNumber
+          size="small"
+          label="REPS"
+          min={0}
+          step={1}
+          value={s.repsObjetivo ?? 0}
+          onValueChange={(v) =>
+            handleSerieChange(idx, { repsObjetivo: v ?? 0 })
+          }
+          sx={{ flex: 1 }}
+        />
+        <InputNumber
+          size="small"
+          label="PESO"
+          min={0}
+          step={0.5}
+          value={s.pesoObjetivo ?? 0}
+          onValueChange={(v) =>
+            handleSerieChange(idx, { pesoObjetivo: v ?? 0 })
+          }
+          sx={{ flex: 1 }}
+        />
+        <InputNumber
+          size="small"
+          label="RPE"
+          min={0}
+          max={10}
+          step={0.5}
+          value={s.rpeObjetivo ?? 0}
+          onValueChange={(v) =>
+            handleSerieChange(idx, { rpeObjetivo: v ?? 0 })
+          }
+          sx={{ flex: 1 }}
+        />
+      </>
+    );
   };
 
   return (
@@ -103,7 +211,9 @@ export function EjercicioEnRutinaCard({
                 {catalog?.nombre ?? "[ EJERCICIO SIN NOMBRE ]"}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {catalog?.grupoMuscular.toUpperCase()}
+                {catalog
+                  ? `${catalog.grupoMuscular.toUpperCase()} // ${tipo.toUpperCase()}`
+                  : ""}
               </Typography>
               {catalog?.descripcion && (
                 <Typography
@@ -164,40 +274,7 @@ export function EjercicioEnRutinaCard({
                 >
                   S{idx + 1}
                 </Typography>
-                <InputNumber
-                  size="small"
-                  label="REPS"
-                  min={0}
-                  step={1}
-                  value={s.repsObjetivo ?? 0}
-                  onValueChange={(v) =>
-                    handleSerieChange(idx, { repsObjetivo: v ?? 0 })
-                  }
-                  sx={{ flex: 1 }}
-                />
-                <InputNumber
-                  size="small"
-                  label="PESO"
-                  min={0}
-                  step={0.5}
-                  value={s.pesoObjetivo ?? 0}
-                  onValueChange={(v) =>
-                    handleSerieChange(idx, { pesoObjetivo: v ?? 0 })
-                  }
-                  sx={{ flex: 1 }}
-                />
-                <InputNumber
-                  size="small"
-                  label="RPE"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={s.rpeObjetivo ?? 0}
-                  onValueChange={(v) =>
-                    handleSerieChange(idx, { rpeObjetivo: v ?? 0 })
-                  }
-                  sx={{ flex: 1 }}
-                />
+                {renderSerieInputs(s, idx)}
                 <IconButton
                   size="small"
                   onClick={() => handleRemoveSerie(idx)}

@@ -10,6 +10,8 @@ export type GrupoMuscular =
   | "cardio"
   | "fullbody";
 
+export type TipoEjercicio = "fuerza" | "cardio" | "tiempo" | "calistenia";
+
 export type DiaSemana =
   | "lunes"
   | "martes"
@@ -24,13 +26,16 @@ export interface Ejercicio {
   nombre: string;
   grupoMuscular: GrupoMuscular;
   descripcion?: string;
+  tipo: TipoEjercicio;
 }
 
 export interface Serie {
-  repsObjetivo: number;
+  repsObjetivo?: number;
   pesoObjetivo?: number;
   rpeObjetivo?: number;
   notas?: string;
+  duracionObjetivoMinutos?: number;
+  distanciaObjetivoKm?: number;
 }
 
 export interface EjercicioEnRutina {
@@ -61,10 +66,13 @@ export interface Rutina {
 }
 
 export interface SerieReal {
-  peso: number;
-  reps: number;
+  peso?: number;
+  reps?: number;
   completado: boolean;
   rpe?: number;
+  duracionMinutos?: number;
+  distanciaKm?: number;
+  nivelInclinacion?: number;
 }
 
 export interface EjercicioReal {
@@ -102,6 +110,17 @@ export interface PesoDiario {
   valor: number;
 }
 
+export type SexoBiologico = "hombre" | "mujer";
+
+export interface PerfilUsuario {
+  id?: number;
+  nombre?: string;
+  alturaCm: number;
+  fechaNacimiento?: string;
+  sexoBio?: SexoBiologico;
+  apiKeyGemini?: string;
+}
+
 class GymDatabase extends Dexie {
   ejercicios!: Table<Ejercicio>;
   carpetas!: Table<Carpeta>;
@@ -109,6 +128,7 @@ class GymDatabase extends Dexie {
   logsEntrenamientos!: Table<LogEntrenamiento>;
   pesos!: Table<PesoDiario>;
   planificacionSemanal!: Table<PlanificacionSemanal>;
+  perfil_usuario!: Table<PerfilUsuario>;
 
   constructor() {
     super("GymTrackerDB");
@@ -208,6 +228,42 @@ class GymDatabase extends Dexie {
         // Schema idéntico a v3. La migración de logs ya se hizo en v3.
         // No hay nada que migrar aquí.
       });
+
+    // v5: tipo de ejercicio y campos flexibles en SerieReal
+    this.version(5)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+      })
+      .upgrade(async (tx) => {
+        // Añadir tipo por defecto "fuerza" a ejercicios existentes que no lo tengan
+        const ejercicios = await tx.table<Ejercicio>("ejercicios").toArray();
+        const actualizados = ejercicios.filter((e) => !(e as Record<string, unknown>).tipo);
+        if (actualizados.length > 0) {
+          await tx
+            .table<Ejercicio>("ejercicios")
+            .bulkPut(actualizados.map((e) => ({ ...e, tipo: "fuerza" as TipoEjercicio })));
+        }
+      });
+
+    // v6: perfil de usuario
+    this.version(6)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+      })
+      .upgrade(async (tx) => {
+        await tx.table<PerfilUsuario>("perfil_usuario").put({ id: 1, alturaCm: 170 });
+      });
   }
 }
 
@@ -293,6 +349,15 @@ export function uid(): string {
   const c = globalThis.crypto;
   if (c && typeof c.randomUUID === "function") return c.randomUUID();
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Obtiene o crea el perfil de usuario (singleton, id=1). */
+export async function getOrCreatePerfil(): Promise<PerfilUsuario> {
+  const existente = await db.perfil_usuario.get(1);
+  if (existente) return existente;
+  const nuevo: PerfilUsuario = { id: 1, alturaCm: 170 };
+  await db.perfil_usuario.put(nuevo);
+  return nuevo;
 }
 
 export const db = new GymDatabase();

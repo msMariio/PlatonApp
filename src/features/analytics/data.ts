@@ -1,9 +1,14 @@
-import { db, type LogEntrenamiento } from "../../core/db";
+import { db, type LogEntrenamiento, type TipoEjercicio } from "../../core/db";
 
 export interface PuntoAnalytics {
   fecha: Date;
   volumen: number;
   oneRm: number;
+  duracionTotal?: number;
+  distanciaTotal?: number;
+  ritmoMedio?: number;
+  volumenMedioPorSerie?: number;
+  numSeriesCompletadas: number;
 }
 
 export async function getLogsPorEjercicio(
@@ -15,9 +20,17 @@ export async function getLogsPorEjercicio(
   );
 }
 
+export async function getTipoEjercicio(
+  ejercicioId: string
+): Promise<TipoEjercicio | undefined> {
+  const ej = await db.ejercicios.get(ejercicioId);
+  return ej?.tipo;
+}
+
 export function calcularPuntosAnalytics(
   logs: LogEntrenamiento[],
-  ejercicioId: string
+  ejercicioId: string,
+  tipo?: TipoEjercicio
 ): PuntoAnalytics[] {
   const puntos: PuntoAnalytics[] = [];
 
@@ -29,19 +42,52 @@ export function calcularPuntosAnalytics(
     if (seriesCompletadas.length === 0) continue;
 
     const volumen = seriesCompletadas.reduce(
-      (acc, s) => acc + s.peso * s.reps,
+      (acc, s) => acc + (s.peso ?? 0) * (s.reps ?? 0),
       0
     );
 
     // 1RM estimado con fórmula de Epley: peso * (1 + reps/30)
     const oneRm = Math.max(
-      ...seriesCompletadas.map((s) => s.peso * (1 + s.reps / 30))
+      ...seriesCompletadas.map((s) => (s.peso ?? 0) * (1 + (s.reps ?? 0) / 30))
     );
+
+    const duracionTotal =
+      tipo === "cardio" || tipo === "tiempo"
+        ? seriesCompletadas.reduce(
+            (acc, s) => acc + (s.duracionMinutos ?? 0),
+            0
+          )
+        : undefined;
+
+    const distanciaTotal =
+      tipo === "cardio"
+        ? seriesCompletadas.reduce(
+            (acc, s) => acc + (s.distanciaKm ?? 0),
+            0
+          )
+        : undefined;
+
+    const numSeriesCompletadas = seriesCompletadas.length;
+
+    const ritmoMedio =
+      tipo === "cardio" && duracionTotal && distanciaTotal && distanciaTotal > 0
+        ? duracionTotal / distanciaTotal
+        : undefined;
+
+    const volumenMedioPorSerie =
+      tipo !== "cardio" && tipo !== "tiempo" && numSeriesCompletadas > 0
+        ? volumen / numSeriesCompletadas
+        : undefined;
 
     puntos.push({
       fecha: new Date(log.fecha),
       volumen,
       oneRm,
+      duracionTotal,
+      distanciaTotal,
+      ritmoMedio,
+      volumenMedioPorSerie,
+      numSeriesCompletadas,
     });
   }
 

@@ -4,6 +4,7 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import { PageHeader } from "../../components/PageHeader";
 import { SectionLabel } from "../../components/SectionLabel";
 import { useColorMode } from "../../core/ColorModeContext";
+import { PerfilView } from "../perfil/PerfilView";
 
 export function SettingsView() {
   const { mode, setMode } = useColorMode();
@@ -50,22 +51,7 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <Stack spacing={1}>
-            <SectionLabel>PRÓXIMAMENTE</SectionLabel>
-            <Typography variant="body2" color="text.secondary">
-              · API KEY de Gemini (Coach IA)
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              · Calendario semanal de planificación
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              · Historial de ejecución por ejercicio
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
+      <PerfilView />
     </Box>
   );
 }
