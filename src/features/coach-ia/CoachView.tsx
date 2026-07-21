@@ -168,11 +168,11 @@ export function CoachView() {
               role: "user",
               texto: success
                 ? `[✓] ${m.functionCall.name} ejecutado correctamente.`
-                : `[✗] ${m.functionCall.name} falló: ${result?.error ?? "error desconocido"}`,
+                : `[✗] ${m.functionCall.name} falló: ${result?.message ?? "error desconocido"}`,
               timestamp: new Date().toISOString(),
               functionResponse: {
                 name: m.functionCall.name,
-                response: result as Record<string, unknown>,
+                response: result as unknown as Record<string, unknown>,
               },
             };
             await agregarMensajeASesion(sId, msgRespuesta);
