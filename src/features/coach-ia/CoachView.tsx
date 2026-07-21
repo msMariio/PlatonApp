@@ -200,6 +200,46 @@ export function CoachView() {
     [],
   );
 
+  /**
+   * Procesa la respuesta de Gemini: guarda el mensaje del modelo.
+   * Si incluye functionCalls, los guarda como parte del mensaje para que
+   * la UI muestre la tarjeta de propuesta.
+   */
+  const procesarRespuestaGemini = useCallback(
+    async (sId: number, resultado: GeminiResult) => {
+      const texto = resultado.texto ?? "";
+      const fcs = resultado.functionCalls;
+
+      if (fcs.length > 0) {
+        // Guardar cada functionCall como un mensaje del modelo
+        for (const fc of fcs) {
+          const msgModelo: MensajeChat = {
+            id: msgId(),
+            role: "model",
+            texto: texto,
+            timestamp: new Date().toISOString(),
+            functionCall: {
+              name: fc.name,
+              args: fc.args,
+              thoughtSignature: fc.thoughtSignature,
+            },
+          };
+          await agregarMensajeASesion(sId, msgModelo);
+        }
+      } else if (texto) {
+        // Solo texto, sin functionCalls
+        const msgModelo: MensajeChat = {
+          id: msgId(),
+          role: "model",
+          texto: texto,
+          timestamp: new Date().toISOString(),
+        };
+        await agregarMensajeASesion(sId, msgModelo);
+      }
+    },
+    [],
+  );
+
   const handleEnviarMensaje = useCallback(async () => {
     const texto = mensajeInput.trim();
     if (!texto || loading || procesandoPropuesta) return;
@@ -251,47 +291,7 @@ export function CoachView() {
     } finally {
       setLoading(false);
     }
-  }, [mensajeInput, loading, procesandoPropuesta, sesionActivaId, hayPropuestaPendiente]);
-
-  /**
-   * Procesa la respuesta de Gemini: guarda el mensaje del modelo.
-   * Si incluye functionCalls, los guarda como parte del mensaje para que
-   * la UI muestre la tarjeta de propuesta.
-   */
-  const procesarRespuestaGemini = useCallback(
-    async (sId: number, resultado: GeminiResult) => {
-      const texto = resultado.texto ?? "";
-      const fcs = resultado.functionCalls;
-
-      if (fcs.length > 0) {
-        // Guardar cada functionCall como un mensaje del modelo
-        for (const fc of fcs) {
-          const msgModelo: MensajeChat = {
-            id: msgId(),
-            role: "model",
-            texto: texto,
-            timestamp: new Date().toISOString(),
-            functionCall: {
-              name: fc.name,
-              args: fc.args,
-              thoughtSignature: fc.thoughtSignature,
-            },
-          };
-          await agregarMensajeASesion(sId, msgModelo);
-        }
-      } else if (texto) {
-        // Solo texto, sin functionCalls
-        const msgModelo: MensajeChat = {
-          id: msgId(),
-          role: "model",
-          texto: texto,
-          timestamp: new Date().toISOString(),
-        };
-        await agregarMensajeASesion(sId, msgModelo);
-      }
-    },
-    [],
-  );
+  }, [mensajeInput, loading, procesandoPropuesta, sesionActivaId, hayPropuestaPendiente, procesarRespuestaGemini]);
 
   /**
    * El usuario confirma la propuesta. Ejecuta las herramientas y
@@ -603,7 +603,7 @@ export function CoachView() {
                   >
                     {ultimoMensaje
                       ? ultimoMensaje.texto.slice(0, 60) +
-                        (ultimoMensaje.texto.length > 60 ? "…" : "")
+                      (ultimoMensaje.texto.length > 60 ? "…" : "")
                       : "[ VACÍA ]"}
                   </Typography>
                   <Typography
@@ -839,7 +839,7 @@ export function CoachView() {
         key={msg.id ?? idx}
         sx={{
           display: "flex",
-          justifyContent: esUser ? "flex-end" : "flex-start",
+          justifyContent: esUser ? "flex-end" : "",
           mb: 2,
         }}
       >
@@ -847,13 +847,14 @@ export function CoachView() {
           sx={{
             maxWidth: "85%",
             minWidth: "20%",
-            border: "1px solid",
+            border: esUser ? "1px solid" : undefined,
             borderColor: "divider",
-            borderLeft: esUser ? undefined : "4px solid",
-            borderLeftColor: esUser ? undefined : "primary.main",
+            borderLeft: esUser ? undefined : undefined,
+            borderLeftColor: esUser ? undefined : undefined,
             borderRight: esUser ? "4px solid" : undefined,
             borderRightColor: esUser ? "divider" : undefined,
-            bgcolor: "background.default",
+            // backgroundColor: esUser ? alpha("#1976d2", 0.05) : undefined,
+            bgcolor: esUser ? "background.paper" : undefined,
             p: 1.5,
           }}
         >
@@ -875,7 +876,7 @@ export function CoachView() {
               color="text.secondary"
               sx={{ letterSpacing: "0.05em" }}
             >
-              {esUser ? "ATLETA" : "PERFORMANCE_OS"}
+              {esUser ? "YO" : "PERFORMANCE_OS"}
             </Typography>
             <Typography
               variant="caption"
@@ -997,9 +998,8 @@ export function CoachView() {
           flexGrow: 1,
           display: "flex",
           flexDirection: "column",
-          border: 1,
           borderColor: "divider",
-          bgcolor: "background.paper",
+          // bgcolor: "background.paper",
           overflow: "hidden",
         }}
       >
@@ -1008,7 +1008,7 @@ export function CoachView() {
           sx={{
             flexGrow: 1,
             overflowY: "auto",
-            p: 2,
+
             display: "flex",
             flexDirection: "column",
           }}
@@ -1167,9 +1167,9 @@ export function CoachView() {
             display: "flex",
             gap: 1,
             p: 2,
-            borderTop: 1,
+            border: 1,
             borderColor: "divider",
-            bgcolor: "background.default",
+            bgcolor: "background.paper",
           }}
         >
           <TextField

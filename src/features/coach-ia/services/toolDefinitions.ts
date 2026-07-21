@@ -41,11 +41,75 @@ export interface ActualizarPlanificacionSemanalArgs {
   dias: Partial<Record<DiaSemana, string | null>>;
 }
 
+export interface EditarRutinaArgs {
+  rutinaId?: string;
+  rutinaNombre?: string;
+  nombre?: string;
+  descripcion?: string;
+}
+
+export interface EditarEjercicioArgs {
+  ejercicioId?: string;
+  ejercicioNombre?: string;
+  nombre?: string;
+  grupoMuscular?: GrupoMuscular;
+  descripcion?: string;
+  tipo?: TipoEjercicio;
+}
+
+export interface EditarCarpetaArgs {
+  carpetaId?: string;
+  carpetaNombre?: string;
+  nombre?: string;
+}
+
+export interface RegistrarPesoArgs {
+  valor: number;
+  fecha?: string;
+  hora?: string;
+}
+
+export interface EditarPesoArgs {
+  fecha: string;
+  hora?: string;
+  nuevoValor?: number;
+}
+
+export interface SerieRealArgs {
+  peso?: number;
+  reps?: number;
+  completado?: boolean;
+  rpe?: number;
+  duracionMinutos?: number;
+  distanciaKm?: number;
+}
+
+export interface EjercicioRealArgs {
+  ejercicioId?: string;
+  ejercicioNombre?: string;
+  series: SerieRealArgs[];
+}
+
+export interface RegistrarEntrenamientoArgs {
+  fecha?: string;
+  rutinaId?: string;
+  rutinaNombre?: string;
+  ejercicios?: EjercicioRealArgs[];
+  notas?: string;
+}
+
 export type FunctionCallArgs =
   | { name: "crear_carpeta"; args: CrearCarpetaArgs }
   | { name: "crear_ejercicio"; args: CrearEjercicioArgs }
   | { name: "crear_rutina"; args: CrearRutinaArgs }
-  | { name: "actualizar_planificacion_semanal"; args: ActualizarPlanificacionSemanalArgs };
+  | { name: "actualizar_planificacion_semanal"; args: ActualizarPlanificacionSemanalArgs }
+  | { name: "editar_rutina"; args: EditarRutinaArgs }
+  | { name: "editar_ejercicio"; args: EditarEjercicioArgs }
+  | { name: "editar_carpeta"; args: EditarCarpetaArgs }
+  | { name: "registrar_peso"; args: RegistrarPesoArgs }
+  | { name: "editar_peso"; args: EditarPesoArgs }
+  | { name: "registrar_entrenamiento"; args: RegistrarEntrenamientoArgs };
+
 
 // ── Declaraciones de herramientas para Gemini ────────────────────────
 
@@ -256,6 +320,253 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["dias"],
+    },
+  },
+  {
+    name: "editar_rutina",
+    description:
+      "Edita una rutina existente (nombre y/o descripción). " +
+      "Úsala cuando el atleta quiera renombrar o actualizar la descripción de una rutina.",
+    parameters: {
+      type: "object",
+      properties: {
+        rutinaId: {
+          type: "string",
+          description:
+            "ID de la rutina a editar. Si no se conoce, usa rutinaNombre.",
+        },
+        rutinaNombre: {
+          type: "string",
+          description:
+            "Nombre actual de la rutina a editar (se buscará por nombre exacto).",
+        },
+        nombre: {
+          type: "string",
+          description: "Nuevo nombre para la rutina.",
+        },
+        descripcion: {
+          type: "string",
+          description: "Nueva descripción para la rutina.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "editar_ejercicio",
+    description:
+      "Edita un ejercicio del catálogo maestro. " +
+      "Úsala para renombrar, cambiar el grupo muscular, tipo o descripción de un ejercicio.",
+    parameters: {
+      type: "object",
+      properties: {
+        ejercicioId: {
+          type: "string",
+          description:
+            "ID del ejercicio a editar. Si no se conoce, usa ejercicioNombre.",
+        },
+        ejercicioNombre: {
+          type: "string",
+          description:
+            "Nombre actual del ejercicio a editar (se buscará por nombre exacto).",
+        },
+        nombre: {
+          type: "string",
+          description: "Nuevo nombre para el ejercicio.",
+        },
+        grupoMuscular: {
+          type: "string",
+          enum: [
+            "pecho",
+            "espalda",
+            "pierna",
+            "hombro",
+            "brazos",
+            "core",
+            "cardio",
+            "fullbody",
+          ],
+          description: "Nuevo grupo muscular principal.",
+        },
+        descripcion: {
+          type: "string",
+          description: "Nueva descripción del ejercicio.",
+        },
+        tipo: {
+          type: "string",
+          enum: ["fuerza", "cardio", "tiempo", "calistenia"],
+          description: "Nuevo tipo de ejercicio.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "editar_carpeta",
+    description:
+      "Renombra una carpeta existente. " +
+      "Úsala cuando el atleta quiera cambiar el nombre de una carpeta de rutinas.",
+    parameters: {
+      type: "object",
+      properties: {
+        carpetaId: {
+          type: "string",
+          description:
+            "ID de la carpeta a editar. Si no se conoce, usa carpetaNombre.",
+        },
+        carpetaNombre: {
+          type: "string",
+          description:
+            "Nombre actual de la carpeta a editar (se buscará por nombre exacto).",
+        },
+        nombre: {
+          type: "string",
+          description: "Nuevo nombre para la carpeta.",
+        },
+      },
+      required: ["nombre"],
+    },
+  },
+  {
+    name: "registrar_peso",
+    description:
+      "Registra un nuevo peso corporal del atleta. " +
+      "Úsala cuando el atleta quiera anotar su peso (ej: 'peso 78.5 kg', 'anota mi peso de hoy'). " +
+      "Por defecto, fecha y hora son hoy/ahora si no se especifican.",
+    parameters: {
+      type: "object",
+      properties: {
+        valor: {
+          type: "number",
+          description: "Peso corporal en kg (ej: 78.5).",
+        },
+        fecha: {
+          type: "string",
+          description:
+            "Fecha del registro en formato YYYY-MM-DD. Por defecto, hoy.",
+        },
+        hora: {
+          type: "string",
+          description:
+            "Hora del registro en formato HH:MM. Por defecto, ahora.",
+        },
+      },
+      required: ["valor"],
+    },
+  },
+  {
+    name: "editar_peso",
+    description:
+      "Modifica un registro de peso existente. " +
+      "Busca el registro por fecha (y opcionalmente hora) y actualiza su valor. " +
+      "Úsala cuando el atleta quiera corregir un peso (ej: 'cambia mi peso del lunes a 79 kg').",
+    parameters: {
+      type: "object",
+      properties: {
+        fecha: {
+          type: "string",
+          description:
+            "Fecha del registro a modificar en formato YYYY-MM-DD.",
+        },
+        hora: {
+          type: "string",
+          description:
+            "Hora del registro a modificar en formato HH:MM. Si no se especifica, se busca el registro más cercano a esa fecha.",
+        },
+        nuevoValor: {
+          type: "number",
+          description: "Nuevo valor del peso en kg.",
+        },
+      },
+      required: ["fecha", "nuevoValor"],
+    },
+  },
+  {
+    name: "registrar_entrenamiento",
+    description:
+      "Registra un entrenamiento completado en el historial del atleta. " +
+      "Puede ser una rutina completa (pasa rutinaId/rutinaNombre) o un entrenamiento libre " +
+      "con ejercicios específicos (pasa ejercicios[]). " +
+      "Úsala cuando el atleta quiera anotar que ha entrenado (ej: 'hoy hice Push A', " +
+      "'ayer hice press banca 3x10 con 60kg y sentadilla 4x8 con 100kg').",
+    parameters: {
+      type: "object",
+      properties: {
+        fecha: {
+          type: "string",
+          description:
+            "Fecha del entrenamiento en formato YYYY-MM-DD. Por defecto, hoy.",
+        },
+        rutinaId: {
+          type: "string",
+          description:
+            "ID de la rutina completada. Si no se conoce, usa rutinaNombre.",
+        },
+        rutinaNombre: {
+          type: "string",
+          description:
+            "Nombre de la rutina completada (se buscará por nombre exacto).",
+        },
+        ejercicios: {
+          type: "array",
+          description:
+            "Ejercicios realizados (para entrenamiento libre). Cada ejercicio debe tener su nombre/ID y las series completadas.",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description:
+                  "Nombre del ejercicio. Si no existe en el catálogo, se creará automáticamente.",
+              },
+              series: {
+                type: "array",
+                description: "Series realizadas para este ejercicio.",
+                items: {
+                  type: "object",
+                  properties: {
+                    peso: {
+                      type: "number",
+                      description: "Peso usado en kg.",
+                    },
+                    reps: {
+                      type: "integer",
+                      description: "Repeticiones completadas.",
+                    },
+                    completado: {
+                      type: "boolean",
+                      description: "Si la serie se completó (por defecto true).",
+                    },
+                    rpe: {
+                      type: "number",
+                      description: "RPE percibido (1-10).",
+                    },
+                    duracionMinutos: {
+                      type: "number",
+                      description:
+                        "Duración en minutos (para ejercicios de cardio/tiempo).",
+                    },
+                    distanciaKm: {
+                      type: "number",
+                      description: "Distancia en km (para ejercicios de cardio).",
+                    },
+                  },
+                },
+              },
+            },
+            required: ["series"],
+          },
+        },
+        notas: {
+          type: "string",
+          description: "Notas adicionales sobre el entrenamiento.",
+        },
+      },
+      required: [],
     },
   },
 ];

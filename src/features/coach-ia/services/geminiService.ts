@@ -97,7 +97,59 @@ function partIsFunctionCall(
 async function buildLocalSnapshot(): Promise<string> {
   const perfil = await db.perfil_usuario.get(1);
 
-  const ultimoPeso = await db.pesos.orderBy("fecha").reverse().first();
+  // Historial completo de pesos (no solo el último)
+  const pesosOrdenados = await db.pesos.orderBy("fecha").toArray();
+  const ultimoPeso = pesosOrdenados.length > 0
+    ? pesosOrdenados[pesosOrdenados.length - 1]
+    : null;
+
+  // ── Métricas de tendencia de peso ──────────────────────────────────
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const hace7Dias = new Date(hoy);
+  hace7Dias.setDate(hace7Dias.getDate() - 7);
+  const hace30Dias = new Date(hoy);
+  hace30Dias.setDate(hace30Dias.getDate() - 30);
+
+  const pesoEnRango = (inicio: Date, fin: Date) => {
+    const enRango = pesosOrdenados.filter((p) => {
+      const f = new Date(p.fecha);
+      return f >= inicio && f <= fin;
+    });
+    return enRango.length > 0 ? enRango : null;
+  };
+
+  const pesoHace7Dias = pesoEnRango(hace7Dias, hoy);
+  const pesoHace30Dias = pesoEnRango(hace30Dias, hoy);
+
+  const cambio7Dias =
+    ultimoPeso && pesoHace7Dias && pesoHace7Dias.length > 0
+      ? +(ultimoPeso.valor - pesoHace7Dias[0].valor).toFixed(1)
+      : null;
+  const cambio30Dias =
+    ultimoPeso && pesoHace30Dias && pesoHace30Dias.length > 0
+      ? +(ultimoPeso.valor - pesoHace30Dias[0].valor).toFixed(1)
+      : null;
+
+  const tasaSemanal =
+    cambio30Dias != null && pesosOrdenados.length >= 2
+      ? +(cambio30Dias / 4.29).toFixed(2)
+      : cambio7Dias != null
+        ? +cambio7Dias.toFixed(2)
+        : null;
+
+  const tendenciaPeso =
+    tasaSemanal == null
+      ? "SIN_DATOS"
+      : tasaSemanal > 0.3
+        ? "SUBIDA_SIGNIFICATIVA"
+        : tasaSemanal > 0.1
+          ? "LIGERA_SUBIDA"
+          : tasaSemanal < -0.3
+            ? "BAJADA_SIGNIFICATIVA"
+            : tasaSemanal < -0.1
+              ? "LIGERA_BAJADA"
+              : "ESTABLE";
 
   const hace28Dias = new Date();
   hace28Dias.setDate(hace28Dias.getDate() - 28);
@@ -112,7 +164,6 @@ async function buildLocalSnapshot(): Promise<string> {
   let edad: number | null = null;
   if (perfil?.fechaNacimiento) {
     const nacimiento = new Date(perfil.fechaNacimiento);
-    const hoy = new Date();
     edad = hoy.getFullYear() - nacimiento.getFullYear();
     const mes = hoy.getMonth() - nacimiento.getMonth();
     if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
@@ -149,10 +200,22 @@ async function buildLocalSnapshot(): Promise<string> {
       sexo: perfil?.sexoBio ?? "NO_CONFIGURADO",
       objetivo: perfil?.objetivo ?? "NO_CONFIGURADO",
     },
-    PESO_ACTUAL:
-      ultimoPeso != null
-        ? `${ultimoPeso.valor} kg (${ultimoPeso.fecha})`
-        : "NO_REGISTRADO",
+    HISTORIAL_PESO: {
+      ultimo:
+        ultimoPeso != null
+          ? `${ultimoPeso.valor} kg (${ultimoPeso.fecha})`
+          : "NO_REGISTRADO",
+      totalRegistros: pesosOrdenados.length,
+      cambio7Dias_kg: cambio7Dias,
+      cambio30Dias_kg: cambio30Dias,
+      tasaSemanal_kg: tasaSemanal,
+      tendencia: tendenciaPeso,
+      registros: pesosOrdenados.map((p) => ({
+        fecha: p.fecha,
+        hora: p.hora,
+        valor: p.valor,
+      })),
+    },
     CATALOGO_EJERCICIOS: ejercicios.map((e) => ({
       id: e.id,
       nombre: e.nombre,

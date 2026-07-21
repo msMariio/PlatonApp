@@ -33,9 +33,8 @@ import {
   eliminarLogEntrenamiento,
   buildEjerciciosRealesDesdeRutina,
   getPlaceholderSerie,
+  CUSTOM_LIBRE_ID,
 } from "./data";
-
-export const CUSTOM_LIBRE_ID = "custom-libre";
 
 type Props = {
   rutinaId: string;

@@ -6,6 +6,9 @@ import {
   type Rutina,
 } from "../../core/db";
 
+/** ID de rutina especial para entrenamientos libres (sin plantilla). */
+export const CUSTOM_LIBRE_ID = "custom-libre";
+
 export async function getUltimoLogDeRutina(
   rutinaId: string
 ): Promise<LogEntrenamiento | undefined> {
