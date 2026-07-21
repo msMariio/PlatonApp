@@ -4,24 +4,34 @@ import {
   Button,
   Card,
   CardContent,
+  FormControl,
   IconButton,
   InputAdornment,
+  InputLabel,
   Link,
+  MenuItem,
+  Select,
   Stack,
   Typography,
   Alert,
   Collapse,
-  ToggleButtonGroup,
-  ToggleButton,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import SaveIcon from "@mui/icons-material/Save";
-import { db, type PerfilUsuario, type SexoBiologico } from "../../core/db";
+import { db, type PerfilUsuario, type SexoBiologico, type ObjetivoFitness } from "../../core/db";
 import { AppTextField } from "../../components/AppTextField";
 import InputNumber from "../../components/InputNumber";
 import { SectionLabel } from "../../components/SectionLabel";
 import { usePerfil } from "./usePerfil";
+
+const OBJETIVOS: { value: ObjetivoFitness; label: string }[] = [
+  { value: "hipertrofia", label: "HIPERTROFIA" },
+  { value: "fuerza_maxima", label: "FUERZA MÁX." },
+  { value: "definicion", label: "DEFINICIÓN" },
+  { value: "perdida_peso", label: "PÉRDIDA PESO" },
+  { value: "recomposicion", label: "RECOMPOSICIÓN" },
+];
 
 export function PerfilView() {
   const perfil = usePerfil();
@@ -30,6 +40,7 @@ export function PerfilView() {
   const [alturaCm, setAlturaCm] = useState<number | null>(170);
   const [fechaNacimiento, setFechaNacimiento] = useState("");
   const [sexoBio, setSexoBio] = useState<SexoBiologico | null>(null);
+  const [objetivo, setObjetivo] = useState<ObjetivoFitness | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [guardado, setGuardado] = useState(false);
@@ -42,6 +53,7 @@ export function PerfilView() {
     setAlturaCm(perfil.alturaCm ?? 170);
     setFechaNacimiento(perfil.fechaNacimiento ?? "");
     setSexoBio(perfil.sexoBio ?? null);
+    setObjetivo(perfil.objetivo ?? null);
     setApiKey(perfil.apiKeyGemini ?? "");
   }
 
@@ -57,12 +69,13 @@ export function PerfilView() {
       nombre: nombre.trim() || undefined,
       fechaNacimiento: fechaNacimiento || undefined,
       sexoBio: sexoBio ?? undefined,
+      objetivo: objetivo ?? undefined,
       apiKeyGemini: apiKey.trim() || undefined,
     };
     await db.perfil_usuario.put(datos);
     setGuardado(true);
     setTimeout(() => setGuardado(false), 2500);
-  }, [nombre, alturaCm, fechaNacimiento, sexoBio, apiKey]);
+  }, [nombre, alturaCm, fechaNacimiento, sexoBio, objetivo, apiKey]);
 
   return (
     <Stack spacing={3}>
@@ -99,35 +112,52 @@ export function PerfilView() {
               }}
             />
 
-            <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mb: 0.5, display: "block", letterSpacing: "0.05em" }}
+            <FormControl fullWidth>
+              <InputLabel id="sexo-label">SEXO BIOLÓGICO</InputLabel>
+              <Select
+                labelId="sexo-label"
+                value={sexoBio ?? ""}
+                label="SEXO BIOLÓGICO"
+                onChange={(e) =>
+                  setSexoBio(
+                    (e.target.value as string) === ""
+                      ? null
+                      : (e.target.value as SexoBiologico),
+                  )
+                }
               >
-                SEXO BIOLÓGICO
-              </Typography>
-              <ToggleButtonGroup
-                exclusive
-                size="small"
-                value={sexoBio}
-                onChange={(_, v) => setSexoBio(v as SexoBiologico | null)}
-                sx={{ gap: 0.5 }}
+                <MenuItem value="">
+                  <em>SIN ESPECIFICAR</em>
+                </MenuItem>
+                <MenuItem value="hombre">HOMBRE</MenuItem>
+                <MenuItem value="mujer">MUJER</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel id="objetivo-label">OBJETIVO</InputLabel>
+              <Select
+                labelId="objetivo-label"
+                value={objetivo ?? ""}
+                label="OBJETIVO"
+                onChange={(e) =>
+                  setObjetivo(
+                    (e.target.value as string) === ""
+                      ? null
+                      : (e.target.value as ObjetivoFitness),
+                  )
+                }
               >
-                <ToggleButton
-                  value="hombre"
-                  sx={{ borderRadius: "0 !important" }}
-                >
-                  HOMBRE
-                </ToggleButton>
-                <ToggleButton
-                  value="mujer"
-                  sx={{ borderRadius: "0 !important" }}
-                >
-                  MUJER
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
+                <MenuItem value="">
+                  <em>SIN ESPECIFICAR</em>
+                </MenuItem>
+                {OBJETIVOS.map((obj) => (
+                  <MenuItem key={obj.value} value={obj.value}>
+                    {obj.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Stack>
         </CardContent>
       </Card>

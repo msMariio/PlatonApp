@@ -6,27 +6,13 @@ import { HomeView } from "./features/home/HomeView";
 import { TrainingLoggerView } from "./features/training-logger/TrainingLoggerView";
 import { SeguimientoPeso } from "./features/peso-tracker/SeguimientoPeso";
 import { RutinasView } from "./features/rutinas/RutinasView";
+import { CoachView } from "./features/coach-ia/CoachView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { AppFooter } from "./components/AppFooter";
 
 type AppScreen =
   | { type: "tab"; tab: number }
   | { type: "logger"; rutinaId: string; logId?: number };
-
-const CoachView = () => (
-  <Box
-    sx={{
-      py: 6,
-      textAlign: "center",
-      border: "1px dashed",
-      borderColor: "divider",
-    }}
-  >
-    <Box sx={{ color: "text.secondary", letterSpacing: "0.05em" }}>
-      {"[ COACH IA // PRÓXIMAMENTE — CONFIGURA TU API KEY EN AJUSTES ]"}
-    </Box>
-  </Box>
-);
 
 function App() {
   const [screen, setScreen] = useState<AppScreen>({ type: "tab", tab: 0 });

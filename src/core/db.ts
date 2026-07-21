@@ -112,13 +112,36 @@ export interface PesoDiario {
 
 export type SexoBiologico = "hombre" | "mujer";
 
+export type ObjetivoFitness =
+  | "hipertrofia"
+  | "fuerza_maxima"
+  | "definicion"
+  | "perdida_peso"
+  | "recomposicion";
+
 export interface PerfilUsuario {
   id?: number;
   nombre?: string;
   alturaCm: number;
   fechaNacimiento?: string;
   sexoBio?: SexoBiologico;
+  objetivo?: ObjetivoFitness;
   apiKeyGemini?: string;
+}
+
+export interface MensajeChat {
+  id: string;
+  role: "user" | "model";
+  texto: string;
+  timestamp: string;
+}
+
+export interface SesionChat {
+  id?: number;
+  titulo: string;
+  fechaCreacion: string;
+  fechaActualizacion: string;
+  mensajes: MensajeChat[];
 }
 
 class GymDatabase extends Dexie {
@@ -129,6 +152,7 @@ class GymDatabase extends Dexie {
   pesos!: Table<PesoDiario>;
   planificacionSemanal!: Table<PlanificacionSemanal>;
   perfil_usuario!: Table<PerfilUsuario>;
+  sesiones_chat!: Table<SesionChat>;
 
   constructor() {
     super("GymTrackerDB");
@@ -263,6 +287,22 @@ class GymDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         await tx.table<PerfilUsuario>("perfil_usuario").put({ id: 1, alturaCm: 170 });
+      });
+
+    // v7: sesiones de chat para el Coach IA
+    this.version(7)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async () => {
+        // Nueva tabla, sin migración necesaria.
       });
   }
 }
