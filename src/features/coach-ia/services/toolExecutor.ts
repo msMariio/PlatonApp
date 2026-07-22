@@ -12,6 +12,7 @@ import type {
   EditarPesoArgs,
   RegistrarEntrenamientoArgs,
   EditarEntrenamientoArgs,
+  ReordenarRutinaArgs,
   EjercicioRealArgs,
   EjercicioEnRutinaArgs,
   FunctionCallArgs,
@@ -245,6 +246,122 @@ async function ejecutarEditarRutina(
     nombre: (args.nombre ?? encontrada.nombre) as string,
     ejerciciosAgregados,
     ejerciciosQuitados,
+  };
+}
+
+async function ejecutarReordenarRutina(
+  args: ReordenarRutinaArgs,
+): Promise<{ id: string; nombre: string; ordenAnterior: string[]; ordenNuevo: string[] }> {
+  const encontrada = await resolveRutinaFull(args.rutinaId, args.rutinaNombre);
+  if (!encontrada) throw new Error("Rutina no encontrada. Indica el ID o nombre de la rutina a reordenar.");
+
+  const ejerciciosActuales = [...encontrada.ejercicios].sort((a, b) => a.order - b.order);
+
+  // Construir lookup: ejercicioId → EjercicioEnRutina
+  const mapa = new Map(ejerciciosActuales.map((ej) => [ej.ejercicioId, ej]));
+
+  // Obtener catálogo de ejercicios
+  const ejerciciosCatalogo = await db.ejercicios.toArray();
+
+  // Construir lookup directo: nombre del catálogo → ID del catálogo,
+  // PERO solo para ejercicios que realmente están en esta rutina.
+  // Así evitamos colisiones con nombres duplicados en el catálogo global.
+  const idsEnRutina = new Set(ejerciciosActuales.map((ej) => ej.ejercicioId));
+  const nombreAId = new Map<string, string>();
+  for (const ejCat of ejerciciosCatalogo) {
+    if (idsEnRutina.has(ejCat.id)) {
+      const key = ejCat.nombre.trim().toLowerCase();
+      // Si hay duplicados de nombre, priorizamos el que ya teníamos
+      if (!nombreAId.has(key)) {
+        nombreAId.set(key, ejCat.id);
+      }
+    }
+  }
+
+  // También construir lookup inverso: ID → nombre (para mensajes)
+  const nombres: Record<string, string> = {};
+  for (const ejCat of ejerciciosCatalogo) {
+    nombres[ejCat.id] = ejCat.nombre;
+  }
+
+  // Resolver cada entrada del nuevo orden a un ejercicioId
+  const nuevoOrdenIds: string[] = [];
+  const noEncontrados: string[] = [];
+
+  for (const item of args.ordenEjercicios) {
+    let resolvedId: string | undefined;
+
+    // Intentar por ID
+    if (item.ejercicioId && mapa.has(item.ejercicioId)) {
+      resolvedId = item.ejercicioId;
+    }
+
+    // Intentar por nombre → ID (con trim para evitar espacios fantasmas)
+    if (!resolvedId && item.ejercicioNombre) {
+      const nombreBuscado = item.ejercicioNombre.trim().toLowerCase();
+      const idPorNombre = nombreAId.get(nombreBuscado);
+      if (idPorNombre && mapa.has(idPorNombre)) {
+        resolvedId = idPorNombre;
+      }
+      // Fallback: búsqueda por substring si el nombre exacto no coincide
+      if (!resolvedId) {
+        for (const [catNombre, catId] of nombreAId) {
+          if (catNombre.includes(nombreBuscado) || nombreBuscado.includes(catNombre)) {
+            resolvedId = catId;
+            break;
+          }
+        }
+      }
+    }
+
+    if (resolvedId) {
+      nuevoOrdenIds.push(resolvedId);
+    } else {
+      noEncontrados.push(item.ejercicioNombre ?? item.ejercicioId ?? "desconocido");
+    }
+  }
+
+  if (noEncontrados.length > 0) {
+    throw new Error(
+      `No se encontraron en la rutina los ejercicios: ${noEncontrados.join(", ")}. ` +
+      "Verifica que los nombres/IDs sean correctos y que pertenezcan a esta rutina.",
+    );
+  }
+
+  // Guard: detectar IDs duplicados en el nuevo orden
+  if (new Set(nuevoOrdenIds).size !== nuevoOrdenIds.length) {
+    throw new Error(
+      "El nuevo orden contiene ejercicios duplicados. Cada ejercicio debe aparecer exactamente una vez.",
+    );
+  }
+
+  // Verificar que todos los ejercicios de la rutina estén en el nuevo orden
+  const idsFaltantes = ejerciciosActuales
+    .filter((ej) => !nuevoOrdenIds.includes(ej.ejercicioId))
+    .map((ej) => ej.ejercicioId);
+
+  if (idsFaltantes.length > 0) {
+    const nombresFaltantes = idsFaltantes.map((id) => nombres[id] ?? id).join(", ");
+    throw new Error(
+      `Faltan ejercicios en el nuevo orden. Debes incluir TODOS los ejercicios de la rutina. ` +
+      `Faltan: ${nombresFaltantes}.`,
+    );
+  }
+
+  // Construir el nuevo array en el orden especificado, reasignando order
+  const ordenAnterior = ejerciciosActuales.map((ej) => ej.ejercicioId);
+  const ejerciciosReordenados = nuevoOrdenIds.map((ejId, idx) => {
+    const ej = mapa.get(ejId)!;
+    return { ...ej, order: idx };
+  });
+
+  await db.rutinas.update(encontrada.id, { ejercicios: ejerciciosReordenados });
+
+  return {
+    id: encontrada.id,
+    nombre: encontrada.nombre,
+    ordenAnterior: ordenAnterior.map((id) => nombres[id] ?? id),
+    ordenNuevo: nuevoOrdenIds.map((id) => nombres[id] ?? id),
   };
 }
 
@@ -767,6 +884,16 @@ export async function executeFunctionCall(
         return {
           success: true,
           message: `Rutina "${result.nombre}" actualizada correctamente${detalle}.`,
+          data: result as unknown as Record<string, unknown>,
+        };
+      }
+      case "reordenar_rutina": {
+        const result = await ejecutarReordenarRutina(call.args);
+        const anterior = result.ordenAnterior.join(" → ");
+        const nuevo = result.ordenNuevo.join(" → ");
+        return {
+          success: true,
+          message: `Rutina "${result.nombre}" reordenada. Orden anterior: ${anterior}. Nuevo orden: ${nuevo}.`,
           data: result as unknown as Record<string, unknown>,
         };
       }

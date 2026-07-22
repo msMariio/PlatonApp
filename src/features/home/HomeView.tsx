@@ -90,8 +90,9 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     texto: string;
   } | null>(null);
   const [guardandoNotas, setGuardandoNotas] = useState(false);
-  // Track collapsed exercises: key = "sessionIndex-ejercicioIdx"
-  const [ejerciciosColapsados, setEjerciciosColapsados] = useState<Set<string>>(
+  // Track expanded exercises: key = "sessionIndex-ejercicioIdx"
+  // Empty set = all collapsed by default
+  const [ejerciciosExpandidos, setEjerciciosExpandidos] = useState<Set<string>>(
     new Set(),
   );
 
@@ -251,8 +252,8 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     });
   };
 
-  const toggleEjercicioColapsado = (key: string) => {
-    setEjerciciosColapsados((prev) => {
+  const toggleEjercicioExpandido = (key: string) => {
+    setEjerciciosExpandidos((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -263,11 +264,11 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     });
   };
 
-  const colapsarTodosEjercicios = (
+  const expandirTodosEjercicios = (
     sessionIndex: number,
     log: LogEntrenamiento,
   ) => {
-    setEjerciciosColapsados((prev) => {
+    setEjerciciosExpandidos((prev) => {
       const next = new Set(prev);
       log.ejercicios.forEach((_, idx) => {
         next.add(`${sessionIndex}-${idx}`);
@@ -276,11 +277,11 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     });
   };
 
-  const expandirTodosEjercicios = (
+  const colapsarTodosEjercicios = (
     sessionIndex: number,
     log: LogEntrenamiento,
   ) => {
-    setEjerciciosColapsados((prev) => {
+    setEjerciciosExpandidos((prev) => {
       const next = new Set(prev);
       log.ejercicios.forEach((_, idx) => {
         next.delete(`${sessionIndex}-${idx}`);
@@ -289,13 +290,13 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     });
   };
 
-  const todosColapsados = (
+  const todosExpandidos = (
     sessionIndex: number,
     log: LogEntrenamiento,
   ): boolean => {
     if (log.ejercicios.length === 0) return false;
     return log.ejercicios.every((_, idx) =>
-      ejerciciosColapsados.has(`${sessionIndex}-${idx}`),
+      ejerciciosExpandidos.has(`${sessionIndex}-${idx}`),
     );
   };
 
@@ -345,12 +346,12 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
           <Stack spacing={1.5}>
             {log.ejercicios.map((ej, idx) => {
               const ejercicioKey = `${index}-${idx}`;
-              const isCollapsed = ejerciciosColapsados.has(ejercicioKey);
+              const isExpanded = ejerciciosExpandidos.has(ejercicioKey);
 
               return (
                 <Box key={`${ej.ejercicioId}-${idx}`}>
                   <Box
-                    onClick={() => toggleEjercicioColapsado(ejercicioKey)}
+                    onClick={() => toggleEjercicioExpandido(ejercicioKey)}
                     sx={{
                       display: "flex",
                       alignItems: "center",
@@ -362,10 +363,10 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                       transition: "color 0.15s",
                     }}
                   >
-                    {isCollapsed ? (
-                      <KeyboardArrowDownIcon fontSize="small" color="action" />
-                    ) : (
+                    {isExpanded ? (
                       <KeyboardArrowUpIcon fontSize="small" color="action" />
+                    ) : (
+                      <KeyboardArrowDownIcon fontSize="small" color="action" />
                     )}
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold" }}>
                       {getNombreEjercicio(ej.ejercicioId)}
@@ -379,7 +380,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                       {ej.series.length}
                     </Typography>
                   </Box>
-                  <Collapse in={!isCollapsed}>
+                  <Collapse in={isExpanded}>
                     <Stack spacing={0.5}>
                       {ej.series.map((s, sIdx) => {
                         const tipoEj = getTipoEjercicio(ej.ejercicioId);
@@ -457,16 +458,16 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                 variant="text"
                 color="inherit"
                 startIcon={
-                  todosColapsados(index, log) ? (
+                  todosExpandidos(index, log) ? (
                     <UnfoldLessIcon fontSize="small" />
                   ) : (
                     <UnfoldMoreIcon fontSize="small" />
                   )
                 }
                 onClick={() =>
-                  todosColapsados(index, log)
-                    ? expandirTodosEjercicios(index, log)
-                    : colapsarTodosEjercicios(index, log)
+                  todosExpandidos(index, log)
+                    ? colapsarTodosEjercicios(index, log)
+                    : expandirTodosEjercicios(index, log)
                 }
                 sx={{
                   fontSize: "0.7rem",
@@ -476,9 +477,9 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                   "&:hover": { opacity: 1 },
                 }}
               >
-                {todosColapsados(index, log)
-                  ? "EXPANDIR TODOS"
-                  : "COLAPSAR TODOS"}
+                {todosExpandidos(index, log)
+                  ? "COLAPSAR TODOS"
+                  : "EXPANDIR TODOS"}
               </Button>
             </Box>
           )}

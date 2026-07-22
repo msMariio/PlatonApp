@@ -29,6 +29,12 @@ import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { AppTextField } from "../../components/AppTextField";
 import { SelectEjercicioDialog } from "../rutinas/components/SelectEjercicioDialog";
 import { EjercicioLoggerCard } from "./components/EjercicioLoggerCard";
+import { OverloadDetectionModal } from "./components/OverloadDetectionModal";
+import {
+  compareWorkoutWithTemplate,
+  actualizarTemplateConMejoras,
+  type EjercicioMejora,
+} from "./utils/compareWorkoutWithTemplate";
 import {
   getUltimoLogDeRutina,
   guardarLogEntrenamiento,
@@ -78,6 +84,8 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   const [notas, setNotas] = useState("");
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showOverloadModal, setShowOverloadModal] = useState(false);
+  const [overloadDiff, setOverloadDiff] = useState<EjercicioMejora[]>([]);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
 
   // Snapshot of the initial state to detect unsaved changes
@@ -186,10 +194,10 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     setEjercicios((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleGuardar = async () => {
+  /** Guarda el entrenamiento (sin actualizar plantilla). */
+  const ejecutarGuardadoSimple = useCallback(async () => {
     if (!rutina) return;
     setGuardando(true);
-    // Build ISO datetime from date and current time (or noon for past dates)
     const fechaISO = new Date(fecha + "T12:00:00").toISOString();
     if (isEditMode && logId !== undefined) {
       await actualizarLogEntrenamiento(logId, ejercicios, notas, fechaISO);
@@ -199,14 +207,81 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         ejercicios,
         isCustomLibre ? rutina.nombre : undefined,
         notas || undefined,
-        fechaISO
+        fechaISO,
       );
     }
-    // Update snapshot after saving so dirty check resets
     initialSnapshot.current = JSON.stringify({ ejercicios, notas, fecha });
     setGuardando(false);
     onSaved?.();
-  };
+  }, [
+    rutina,
+    fecha,
+    isEditMode,
+    logId,
+    rutinaId,
+    ejercicios,
+    notas,
+    isCustomLibre,
+    onSaved,
+  ]);
+
+  const handleGuardar = useCallback(async () => {
+    if (!rutina) return;
+
+    // Modo edición o entrenamiento libre: guardar directamente
+    if (isEditMode || isCustomLibre) {
+      await ejecutarGuardadoSimple();
+      return;
+    }
+
+    // Comparar contra la plantilla para detectar sobrecarga progresiva
+    const diff = compareWorkoutWithTemplate(ejercicios, rutina);
+
+    if (diff.length === 0) {
+      // Sin mejoras detectadas → guardar directamente
+      await ejecutarGuardadoSimple();
+      return;
+    }
+
+    // Rellenar nombres de ejercicios desde el catálogo (ya en memoria)
+    const lookup = new Map(ejerciciosCatalogo.map((e) => [e.id, e]));
+    const diffConNombre: EjercicioMejora[] = diff.map((d) => ({
+      ...d,
+      nombre: lookup.get(d.ejercicioId)?.nombre ?? d.ejercicioId,
+    }));
+
+    setOverloadDiff(diffConNombre);
+    setShowOverloadModal(true);
+  }, [
+    rutina,
+    isEditMode,
+    isCustomLibre,
+    ejercicios,
+    ejecutarGuardadoSimple,
+  ]);
+
+  /** Guardar + actualizar plantilla con las nuevas marcas. */
+  const handleUpdateTemplate = useCallback(async () => {
+    if (!rutina) return;
+    setShowOverloadModal(false);
+    setGuardando(true);
+    try {
+      try {
+        await actualizarTemplateConMejoras(rutinaId, ejercicios, rutina);
+      } catch {
+        // Si falla la actualización de plantilla, seguimos guardando el log
+      }
+      await ejecutarGuardadoSimple();
+    } finally {
+      setGuardando(false);
+    }
+  }, [rutina, rutinaId, ejercicios, ejecutarGuardadoSimple]);
+
+  /** Guardar sin tocar la plantilla. */
+  const handleSkipUpdate = useCallback(async () => {
+    setShowOverloadModal(false);
+    await ejecutarGuardadoSimple();
+  }, [ejecutarGuardadoSimple]);
 
   if (!rutina) {
     return (
@@ -365,6 +440,16 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         open={selectOpen}
         onClose={() => setSelectOpen(false)}
         onPick={handleAddEjercicio}
+      />
+
+      {/* Overload detection modal */}
+      <OverloadDetectionModal
+        open={showOverloadModal}
+        mejoras={overloadDiff}
+        onUpdateTemplate={handleUpdateTemplate}
+        onSkipUpdate={handleSkipUpdate}
+        onClose={() => setShowOverloadModal(false)}
+        disabled={guardando}
       />
 
       {/* Unsaved changes confirmation dialog */}

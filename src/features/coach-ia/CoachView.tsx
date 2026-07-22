@@ -27,6 +27,7 @@ import {
   enviarRespuestaFuncionAGemini,
   crearSesionChat,
   agregarMensajeASesion,
+  actualizarTituloSesion,
   eliminarSesionChat,
   type GeminiResult,
   type FunctionCallProposal,
@@ -49,6 +50,29 @@ const blinkCursor = keyframes`
 
 const DRAWER_WIDTH = 280;
 
+/** Umbral de 2 horas para reutilizar la última sesión al abrir el chat. */
+const UMBRAL_REUTILIZACION_MS = 2 * 60 * 60 * 1000;
+
+/** Convierte una fecha ISO a texto relativo: "Ahora", "Hace 5 min", "Hace 2h", "Ayer", "Hace 3d". */
+function formatearTiempoRelativo(fechaIso: string): string {
+  const ahora = Date.now();
+  const fecha = new Date(fechaIso).getTime();
+  const diffMs = ahora - fecha;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHoras = Math.floor(diffMs / 3600000);
+  const diffDias = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return "Ahora";
+  if (diffMin < 60) return `Hace ${diffMin} min`;
+  if (diffHoras < 24) return `Hace ${diffHoras}h`;
+  if (diffDias === 1) return "Ayer";
+  if (diffDias < 7) return `Hace ${diffDias}d`;
+  return new Date(fechaIso).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 export function CoachView() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sesionActivaId, setSesionActivaId] = useState<number | undefined>(
@@ -60,12 +84,11 @@ export function CoachView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Leer sesiones de forma reactiva
-  const sesiones =
-    useLiveQuery(
-      () => db.sesiones_chat.orderBy("fechaActualizacion").reverse().toArray(),
-      [],
-    ) ?? [];
+  // Leer sesiones de forma reactiva (null = aún no cargado)
+  const sesiones = useLiveQuery(
+    () => db.sesiones_chat.orderBy("fechaActualizacion").reverse().toArray(),
+    [],
+  );
 
   // Leer sesión activa de forma reactiva
   const sesionActiva = useLiveQuery(
@@ -80,14 +103,26 @@ export function CoachView() {
   // Nombre del coach (personalizado o por defecto)
   const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
 
-  // Crear primera sesión si no hay ninguna (usa ref para one-shot)
+  // Inicializar sesión: esperar a que las sesiones estén cargadas,
+  // luego reutilizar la última si está dentro del umbral, o crear nueva.
   const initRef = useRef(false);
   useEffect(() => {
     if (initRef.current) return;
+    // Esperar a que la query de sesiones se resuelva (null = aún cargando)
+    if (!sesiones) return;
     if (sesiones.length > 0) {
-      initRef.current = true;
-      setSesionActivaId(sesiones[0].id);
-    } else if (perfil) {
+      const ultimaSesion = sesiones[0];
+      const haceUmbral = Date.now() - UMBRAL_REUTILIZACION_MS;
+      const fechaActualizacion = new Date(ultimaSesion.fechaActualizacion).getTime();
+      if (fechaActualizacion > haceUmbral) {
+        // Última sesión reciente → reutilizar
+        initRef.current = true;
+        setSesionActivaId(ultimaSesion.id);
+        return;
+      }
+    }
+    // Sin sesiones, sesiones caducadas, o con perfil cargado → crear nueva
+    if (perfil) {
       initRef.current = true;
       crearSesionChat().then((id) => setSesionActivaId(id));
     }
@@ -278,6 +313,21 @@ export function CoachView() {
       return;
     }
 
+    // Actualizar título con el primer mensaje del usuario
+    try {
+      const sesion = await db.sesiones_chat.get(sId);
+      if (sesion && sesion.titulo === "Nueva sesión") {
+        const tituloLimpio = texto.replace(/\n+/g, " ").trim();
+        const titulo =
+          tituloLimpio.length > 50
+            ? tituloLimpio.slice(0, 50) + "…"
+            : tituloLimpio;
+        await actualizarTituloSesion(sId, titulo);
+      }
+    } catch {
+      // Error silencioso: el título no es crítico
+    }
+
     try {
       // Obtener los mensajes previos (sin el que acabamos de añadir)
       const sesion = await db.sesiones_chat.get(sId);
@@ -398,7 +448,7 @@ export function CoachView() {
     if (!window.confirm("¿ELIMINAR ESTA SESIÓN DE CHAT?")) return;
     await eliminarSesionChat(id);
     if (sesionActivaId === id) {
-      const restantes = sesiones.filter((s) => s.id !== id);
+      const restantes = (sesiones ?? []).filter((s) => s.id !== id);
       setSesionActivaId(restantes.length > 0 ? restantes[0].id : undefined);
     }
   };
@@ -552,7 +602,7 @@ export function CoachView() {
 
       {/* Lista de sesiones */}
       <Box sx={{ flexGrow: 1, overflowY: "auto" }}>
-        {sesiones.length === 0 ? (
+        {!sesiones || sesiones.length === 0 ? (
           <Box sx={{ p: 2 }}>
             <Typography variant="caption" color="text.secondary">
               [ SIN SESIONES // CREA UNA PARA EMPEZAR ]
@@ -622,8 +672,15 @@ export function CoachView() {
                     variant="caption"
                     color="text.secondary"
                     sx={{ display: "block", mt: 0.25, fontSize: "0.65rem" }}
+                    title={new Date(s.fechaActualizacion).toLocaleString("es-ES", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
                   >
-                    {new Date(s.fechaCreacion).toLocaleDateString("es-ES")}
+                    {formatearTiempoRelativo(s.fechaActualizacion)}
                   </Typography>
                 </Box>
                 <IconButton

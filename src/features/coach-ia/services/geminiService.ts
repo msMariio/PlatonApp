@@ -493,22 +493,14 @@ ${snapshot}
 // ── Gestión de sesiones ──────────────────────────────────────────────
 
 /**
- * Crea una nueva sesión de chat con un título por defecto basado en la fecha.
+ * Crea una nueva sesión de chat con un título placeholder.
+ * El título se actualizará automáticamente con el primer mensaje del usuario.
  */
 export async function crearSesionChat(): Promise<number> {
   const ahora = new Date().toISOString();
-  const fechaLegible = new Date().toLocaleDateString("es-ES", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const hora = new Date().toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   const sesion: SesionChat = {
-    titulo: `SESIÓN // ${fechaLegible} ${hora}`,
+    titulo: "Nueva sesión",
     fechaCreacion: ahora,
     fechaActualizacion: ahora,
     mensajes: [],
@@ -533,6 +525,16 @@ export async function agregarMensajeASesion(
   sesion.fechaActualizacion = new Date().toISOString();
 
   await db.sesiones_chat.put(sesion);
+}
+
+/**
+ * Actualiza el título de una sesión de chat.
+ */
+export async function actualizarTituloSesion(
+  sesionId: number,
+  titulo: string,
+): Promise<void> {
+  await db.sesiones_chat.update(sesionId, { titulo });
 }
 
 /**

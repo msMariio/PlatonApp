@@ -42,6 +42,18 @@ export interface EjercicioAQuitarArgs {
   ejercicioNombre?: string;
 }
 
+export interface EjercicioAReordenarArgs {
+  ejercicioId?: string;
+  ejercicioNombre?: string;
+}
+
+export interface ReordenarRutinaArgs {
+  rutinaId?: string;
+  rutinaNombre?: string;
+  /** Lista de ejercicios en el nuevo orden deseado. Deben incluirse TODOS los ejercicios actuales de la rutina. */
+  ordenEjercicios: EjercicioAReordenarArgs[];
+}
+
 export interface EditarRutinaArgs {
   rutinaId?: string;
   rutinaNombre?: string;
@@ -146,7 +158,8 @@ export type FunctionCallArgs =
   | { name: "registrar_peso"; args: RegistrarPesoArgs }
   | { name: "editar_peso"; args: EditarPesoArgs }
   | { name: "registrar_entrenamiento"; args: RegistrarEntrenamientoArgs }
-  | { name: "editar_entrenamiento"; args: EditarEntrenamientoArgs };
+  | { name: "editar_entrenamiento"; args: EditarEntrenamientoArgs }
+  | { name: "reordenar_rutina"; args: ReordenarRutinaArgs };
 
 // ── Declaraciones de herramientas para Gemini ────────────────────────
 
@@ -818,6 +831,51 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["fecha"],
+    },
+  },
+  {
+    name: "reordenar_rutina",
+    description:
+      "Reordena los ejercicios dentro de una rutina existente. " +
+      "Úsala cuando el atleta quiera cambiar el orden de los ejercicios en una rutina " +
+      "(ej: 'pon press banca primero en Push A', 'ordena los ejercicios así: press banca, press militar, fondos, extensiones'). " +
+      "DEBES incluir TODOS los ejercicios actuales de la rutina en el nuevo orden deseado.",
+    parameters: {
+      type: "object",
+      properties: {
+        rutinaId: {
+          type: "string",
+          description:
+            "ID de la rutina a reordenar. Si no se conoce, usa rutinaNombre.",
+        },
+        rutinaNombre: {
+          type: "string",
+          description:
+            "Nombre de la rutina a reordenar (se buscará por nombre exacto).",
+        },
+        ordenEjercicios: {
+          type: "array",
+          description:
+            "Lista de ejercicios en el NUEVO orden deseado. DEBES incluir TODOS los ejercicios que tiene actualmente la rutina. " +
+            "Identifica cada ejercicio por su ejercicioId o ejercicioNombre (nombre exacto).",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description:
+                  "ID del ejercicio. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description:
+                  "Nombre exacto del ejercicio.",
+              },
+            },
+          },
+        },
+      },
+      required: ["ordenEjercicios"],
     },
   },
 ];
