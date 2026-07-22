@@ -1,5 +1,5 @@
 import { db, uid, buildPlanificacionVacia, type Serie, type PesoDiario, type SerieReal, type EjercicioReal } from "../../../core/db";
-import { CUSTOM_LIBRE_ID } from "../../training-logger/data";
+import { CUSTOM_LIBRE_ID, actualizarLogEntrenamiento } from "../../training-logger/data";
 import type {
   CrearCarpetaArgs,
   CrearEjercicioArgs,
@@ -11,7 +11,9 @@ import type {
   RegistrarPesoArgs,
   EditarPesoArgs,
   RegistrarEntrenamientoArgs,
+  EditarEntrenamientoArgs,
   EjercicioRealArgs,
+  EjercicioEnRutinaArgs,
   FunctionCallArgs,
 } from "./toolDefinitions";
 
@@ -74,7 +76,7 @@ async function resolveEjercicio(
 }
 
 /**
- * Busca una rutina por ID o por nombre.
+ * Busca una rutina por ID o por nombre y devuelve solo el ID.
  */
 async function resolveRutina(
   rutinaId: string | null | undefined,
@@ -91,6 +93,38 @@ async function resolveRutina(
     if (porNombre) return porNombre.id;
   }
   return null;
+}
+
+/**
+ * Busca una rutina por ID o por nombre y devuelve el objeto completo.
+ */
+async function resolveRutinaFull(
+  rutinaId: string | undefined,
+  rutinaNombre?: string,
+) {
+  const id = await resolveRutina(rutinaId ?? null, rutinaNombre);
+  if (!id) return null;
+  return db.rutinas.get(id);
+}
+
+/**
+ * Construye una Serie por defecto a partir de los argumentos de un ejercicio.
+ */
+function buildDefaultSerie(ej: EjercicioEnRutinaArgs): Serie {
+  if (ej.duracionObjetivoMinutos) {
+    return { duracionObjetivoMinutos: ej.duracionObjetivoMinutos };
+  }
+  if (ej.distanciaObjetivoKm) {
+    return { distanciaObjetivoKm: ej.distanciaObjetivoKm };
+  }
+  return {
+    repsObjetivo: ej.repsObjetivo ?? 8,
+    pesoObjetivo: ej.pesoObjetivo,
+    notas:
+      ej.descansoMinutos != null
+        ? `Descanso: ${ej.descansoMinutos} min`
+        : undefined,
+  };
 }
 
 // ── Ejecutores por herramienta ──────────────────────────────────────
@@ -134,22 +168,84 @@ async function ejecutarEditarEjercicio(args: EditarEjercicioArgs): Promise<{ id:
   return { id: encontrado.id, nombre: (args.nombre ?? encontrado.nombre) as string };
 }
 
-async function ejecutarEditarRutina(args: EditarRutinaArgs): Promise<{ id: string; nombre: string }> {
-  let encontrada = args.rutinaId ? await db.rutinas.get(args.rutinaId) : null;
-  if (!encontrada && args.rutinaNombre) {
-    encontrada = await db.rutinas
-      .filter((r) => r.nombre.toLowerCase() === args.rutinaNombre!.toLowerCase())
-      .first();
-  }
+async function ejecutarEditarRutina(
+  args: EditarRutinaArgs,
+): Promise<{ id: string; nombre: string; ejerciciosAgregados: number; ejerciciosQuitados: number }> {
+  const encontrada = await resolveRutinaFull(args.rutinaId, args.rutinaNombre);
   if (!encontrada) throw new Error("Rutina no encontrada. Indica el ID o nombre de la rutina a editar.");
 
+  // ── Cambios de nombre/descripción ───────────────────────────────
   const cambios: Record<string, unknown> = {};
   if (args.nombre !== undefined) cambios.nombre = args.nombre;
   if (args.descripcion !== undefined) cambios.descripcion = args.descripcion;
 
+  // ── Quitar ejercicios ───────────────────────────────────────────
+  let ejercicios = [...encontrada.ejercicios];
+  let ejerciciosQuitados = 0;
+
+  if (args.ejerciciosQuitar && args.ejerciciosQuitar.length > 0) {
+    // Resolver IDs de ejercicios a quitar
+    const idsAQuitar = await Promise.all(
+      args.ejerciciosQuitar.map(async (eq) => {
+        if (eq.ejercicioId) return eq.ejercicioId;
+        if (eq.ejercicioNombre) {
+          const ej = await db.ejercicios
+            .filter((e) => e.nombre.toLowerCase() === eq.ejercicioNombre!.toLowerCase())
+            .first();
+          return ej?.id ?? null;
+        }
+        return null;
+      }),
+    );
+    const idsSet = new Set(idsAQuitar.filter((id): id is string => id !== null));
+    const antesDeFiltrar = ejercicios.length;
+    ejercicios = ejercicios.filter((ej) => !idsSet.has(ej.ejercicioId));
+    ejerciciosQuitados = antesDeFiltrar - ejercicios.length;
+  }
+
+  // ── Añadir ejercicios ───────────────────────────────────────────
+  let ejerciciosAgregados = 0;
+
+  if (args.ejerciciosAgregar && args.ejerciciosAgregar.length > 0) {
+    // Resolver cada ejercicio a añadir
+    const resueltos = await Promise.all(
+      args.ejerciciosAgregar.map(async (ej: EjercicioEnRutinaArgs) => {
+        const eId = await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre);
+        return { ...ej, resolvedId: eId };
+      }),
+    );
+
+    const validos = resueltos.filter((e) => e.resolvedId);
+
+    // Construir nuevos EjercicioEnRutina con order al final
+    const nextOrder = ejercicios.length;
+    const nuevosEjercicios = validos.map((ej, idx) => {
+      return {
+        id: uid(),
+        ejercicioId: ej.resolvedId!,
+        series: Array.from({ length: ej.series }, () => buildDefaultSerie(ej)),
+        notas: ej.notas,
+        order: nextOrder + idx,
+      };
+    });
+
+    ejercicios = [...ejercicios, ...nuevosEjercicios];
+    ejerciciosAgregados = nuevosEjercicios.length;
+  }
+
+  // ── Re-numerar order ────────────────────────────────────────────
+  ejercicios = ejercicios.map((ej, i) => ({ ...ej, order: i }));
+  cambios.ejercicios = ejercicios;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.rutinas.update(encontrada.id, cambios as any);
-  return { id: encontrada.id, nombre: (args.nombre ?? encontrada.nombre) as string };
+
+  return {
+    id: encontrada.id,
+    nombre: (args.nombre ?? encontrada.nombre) as string,
+    ejerciciosAgregados,
+    ejerciciosQuitados,
+  };
 }
 
 async function ejecutarCrearEjercicio(args: CrearEjercicioArgs): Promise<{ id: string; nombre: string; grupoMuscular: string }> {
@@ -198,24 +294,10 @@ async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
   ).length;
 
   const ejerciciosEnRutina = ejerciciosValidos.map((ej, idx) => {
-    const defaultSerie = (): Serie => {
-      if (ej.duracionObjetivoMinutos) {
-        return { duracionObjetivoMinutos: ej.duracionObjetivoMinutos };
-      }
-      if (ej.distanciaObjetivoKm) {
-        return { distanciaObjetivoKm: ej.distanciaObjetivoKm };
-      }
-      return {
-        repsObjetivo: ej.repsObjetivo ?? 8,
-        pesoObjetivo: ej.pesoObjetivo,
-        notas: ej.descansoMinutos != null ? `Descanso: ${ej.descansoMinutos} min` : undefined,
-      };
-    };
-
     return {
       id: uid(),
       ejercicioId: ej.resolvedId!,
-      series: Array.from({ length: ej.series }, () => defaultSerie()),
+      series: Array.from({ length: ej.series }, () => buildDefaultSerie(ej)),
       notas: ej.notas,
       order: idx,
     };
@@ -424,6 +506,187 @@ async function ejecutarRegistrarEntrenamiento(
   };
 }
 
+async function ejecutarEditarEntrenamiento(
+  args: EditarEntrenamientoArgs,
+): Promise<{
+  fecha: string;
+  rutinaNombre: string;
+  ejerciciosAgregados: number;
+  ejerciciosQuitados: number;
+  ejerciciosModificados: number;
+  ejerciciosCreados: string[];
+}> {
+  // ── Búsqueda optimizada con índice compuesto [rutinaId+fecha] ──
+  let logId: number | undefined;
+  let rutinaSnapshot: string | undefined;
+
+  if (args.rutinaId) {
+    const match = await db.logsEntrenamientos
+      .where("[rutinaId+fecha]")
+      .equals([args.rutinaId, args.fecha])
+      .first();
+    if (match) {
+      logId = match.id;
+      rutinaSnapshot = match.rutinaSnapshot ?? args.rutinaId;
+    }
+  }
+
+  // Fallback: buscar por fecha + nombre de rutina (no indexado, pero poco frecuente)
+  if (logId == null && args.rutinaNombre) {
+    const logs = await db.logsEntrenamientos
+      .where("fecha")
+      .equals(args.fecha)
+      .toArray();
+    const match = logs.find(
+      (l) =>
+        l.rutinaSnapshot?.toLowerCase() === args.rutinaNombre!.toLowerCase() ||
+        l.rutinaId === args.rutinaNombre,
+    );
+    if (match) {
+      logId = match.id;
+      rutinaSnapshot = match.rutinaSnapshot ?? match.rutinaId;
+    }
+  }
+
+  // Si no hay rutinaId ni rutinaNombre, buscar por fecha (primer log de ese día)
+  if (logId == null && !args.rutinaId && !args.rutinaNombre) {
+    const match = await db.logsEntrenamientos
+      .where("fecha")
+      .equals(args.fecha)
+      .first();
+    if (match) {
+      logId = match.id;
+      rutinaSnapshot = match.rutinaSnapshot ?? match.rutinaId;
+    }
+  }
+
+  if (logId == null) {
+    throw new Error(
+      `No se encontró un entrenamiento registrado el ${args.fecha}${args.rutinaNombre ? ` para "${args.rutinaNombre}"` : ""}.`,
+    );
+  }
+
+  // ── Cargar el log actual ────────────────────────────────────────
+  const log = await db.logsEntrenamientos.get(logId);
+  if (!log) {
+    throw new Error(`Log de entrenamiento ${logId} no encontrado.`);
+  }
+
+  let ejercicios = [...log.ejercicios];
+  const ejerciciosCreados: string[] = [];
+  let ejerciciosAgregados = 0;
+  let ejerciciosQuitados = 0;
+  let ejerciciosModificados = 0;
+
+  // ── Quitar ejercicios ───────────────────────────────────────────
+  if (args.ejerciciosQuitar && args.ejerciciosQuitar.length > 0) {
+    const idsAQuitar = await Promise.all(
+      args.ejerciciosQuitar.map(async (eq) => {
+        if (eq.ejercicioId) return eq.ejercicioId;
+        if (eq.ejercicioNombre) {
+          const ej = await db.ejercicios
+            .filter((e) => e.nombre.toLowerCase() === eq.ejercicioNombre!.toLowerCase())
+            .first();
+          return ej?.id ?? null;
+        }
+        return null;
+      }),
+    );
+    const idsSet = new Set(idsAQuitar.filter((id): id is string => id !== null));
+    const antesDeFiltrar = ejercicios.length;
+    ejercicios = ejercicios.filter((ej) => !idsSet.has(ej.ejercicioId));
+    ejerciciosQuitados = antesDeFiltrar - ejercicios.length;
+  }
+
+  // ── Modificar series de ejercicios existentes ───────────────────
+  if (args.ejerciciosModificar && args.ejerciciosModificar.length > 0) {
+    for (const mod of args.ejerciciosModificar) {
+      if (!mod.series || mod.series.length === 0) continue;
+
+      // Resolver el ejercicio a modificar
+      let targetId: string | null = null;
+      if (mod.ejercicioId) targetId = mod.ejercicioId;
+      if (!targetId && mod.ejercicioNombre) {
+        const ej = await db.ejercicios
+          .filter((e) => e.nombre.toLowerCase() === mod.ejercicioNombre!.toLowerCase())
+          .first();
+        targetId = ej?.id ?? null;
+      }
+
+      if (!targetId) continue;
+
+      // Encontrar el ejercicio en el log
+      const idx = ejercicios.findIndex((ej) => ej.ejercicioId === targetId);
+      if (idx === -1) continue;
+
+      // Aplicar modificaciones a las series indicadas
+      const seriesMod = [...ejercicios[idx].series];
+      for (const sMod of mod.series) {
+        if (sMod.serieIdx < 0 || sMod.serieIdx >= seriesMod.length) continue;
+        const actual = seriesMod[sMod.serieIdx];
+        seriesMod[sMod.serieIdx] = {
+          ...actual,
+          ...(sMod.peso !== undefined ? { peso: sMod.peso } : {}),
+          ...(sMod.reps !== undefined ? { reps: sMod.reps } : {}),
+          ...(sMod.completado !== undefined ? { completado: sMod.completado } : {}),
+          ...(sMod.rpe !== undefined ? { rpe: sMod.rpe } : {}),
+          ...(sMod.duracionMinutos !== undefined ? { duracionMinutos: sMod.duracionMinutos } : {}),
+          ...(sMod.distanciaKm !== undefined ? { distanciaKm: sMod.distanciaKm } : {}),
+        };
+      }
+
+      ejercicios[idx] = { ...ejercicios[idx], series: seriesMod };
+      ejerciciosModificados++;
+    }
+  }
+
+  // ── Añadir ejercicios ───────────────────────────────────────────
+  if (args.ejerciciosAgregar && args.ejerciciosAgregar.length > 0) {
+    const resueltos = await Promise.all(
+      args.ejerciciosAgregar.map(async (ej: EjercicioRealArgs) => {
+        const eId = await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre);
+        if (eId && !ej.ejercicioId) {
+          ejerciciosCreados.push(ej.ejercicioNombre ?? eId);
+        }
+        return { ...ej, resolvedId: eId };
+      }),
+    );
+
+    const validos = resueltos.filter((e) => e.resolvedId);
+
+    const nuevosEjercicios: EjercicioReal[] = validos.map((ej) => ({
+      ejercicioId: ej.resolvedId!,
+      series: ej.series.map((s) => ({
+        completado: s.completado ?? true,
+        peso: s.peso,
+        reps: s.reps,
+        rpe: s.rpe,
+        duracionMinutos: s.duracionMinutos,
+        distanciaKm: s.distanciaKm,
+      })),
+    }));
+
+    ejercicios = [...ejercicios, ...nuevosEjercicios];
+    ejerciciosAgregados = nuevosEjercicios.length;
+  }
+
+  // ── Guardar cambios ─────────────────────────────────────────────
+  await actualizarLogEntrenamiento(
+    logId,
+    ejercicios,
+    args.notas ?? log.notas,
+  );
+
+  return {
+    fecha: args.fecha,
+    rutinaNombre: rutinaSnapshot ?? "desconocida",
+    ejerciciosAgregados,
+    ejerciciosQuitados,
+    ejerciciosModificados,
+    ejerciciosCreados,
+  };
+}
+
 // ── Entry point ──────────────────────────────────────────────────────
 
 export interface ToolExecutionResult {
@@ -495,9 +758,15 @@ export async function executeFunctionCall(
       }
       case "editar_rutina": {
         const result = await ejecutarEditarRutina(call.args);
+        const cambios: string[] = [];
+        if (call.args.nombre !== undefined) cambios.push(`renombrada a "${result.nombre}"`);
+        if (call.args.descripcion !== undefined) cambios.push("descripción actualizada");
+        if (result.ejerciciosQuitados > 0) cambios.push(`${result.ejerciciosQuitados} ejercicios quitados`);
+        if (result.ejerciciosAgregados > 0) cambios.push(`${result.ejerciciosAgregados} ejercicios añadidos`);
+        const detalle = cambios.length > 0 ? ` (${cambios.join(", ")})` : "";
         return {
           success: true,
-          message: `Rutina "${result.nombre}" actualizada correctamente.`,
+          message: `Rutina "${result.nombre}" actualizada correctamente${detalle}.`,
           data: result as unknown as Record<string, unknown>,
         };
       }
@@ -529,6 +798,23 @@ export async function executeFunctionCall(
         return {
           success: true,
           message: `${tipo} registrado (${result.fecha}) con ${result.ejerciciosCount} ejercicios.${extra}`,
+          data: result as unknown as Record<string, unknown>,
+        };
+      }
+      case "editar_entrenamiento": {
+        const result = await ejecutarEditarEntrenamiento(call.args);
+        const cambios: string[] = [];
+        if (result.ejerciciosAgregados > 0) cambios.push(`${result.ejerciciosAgregados} ejercicios añadidos`);
+        if (result.ejerciciosQuitados > 0) cambios.push(`${result.ejerciciosQuitados} ejercicios quitados`);
+        if (result.ejerciciosModificados > 0) cambios.push(`${result.ejerciciosModificados} ejercicios modificados`);
+        const detalle = cambios.length > 0 ? ` (${cambios.join(", ")})` : "";
+        let extra = "";
+        if (result.ejerciciosCreados.length > 0) {
+          extra = ` Se crearon ${result.ejerciciosCreados.length} ejercicios nuevos: ${result.ejerciciosCreados.join(", ")}.`;
+        }
+        return {
+          success: true,
+          message: `Entrenamiento del ${result.fecha} ("${result.rutinaNombre}") actualizado${detalle}.${extra}`,
           data: result as unknown as Record<string, unknown>,
         };
       }

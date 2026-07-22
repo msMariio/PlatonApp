@@ -47,7 +47,7 @@ import {
   getLogsDeHoy,
   DIAS_SEMANA,
 } from "./data";
-import { actualizarLogEntrenamiento } from "../training-logger/data";
+import { actualizarLogEntrenamiento, calcularVolumenTotal } from "../training-logger/data";
 
 const TIPO_LABEL: Record<TipoEjercicio, string> = {
   fuerza: "FUERZA",
@@ -112,9 +112,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     await setRutinaDelDia(dia, rutinaId);
   };
 
-  const getTiposRutina = (
-    rutinaId: string | null
-  ): TipoEjercicio[] => {
+  const getTiposRutina = (rutinaId: string | null): TipoEjercicio[] => {
     if (!rutinaId) return [];
     const rutina = rutinas.find((r) => r.id === rutinaId);
     if (!rutina) return [];
@@ -165,22 +163,8 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     return catalogoLookup.get(ejercicioId)?.tipo ?? "fuerza";
   };
 
-  const calcularVolumenTotal = (log: LogEntrenamiento): number => {
-    return log.ejercicios.reduce((acc, ej) => {
-      return (
-        acc +
-        ej.series.reduce((sAcc, s) => {
-          if (s.completado) {
-            return sAcc + (s.peso ?? 0) * (s.reps ?? 0);
-          }
-          return sAcc;
-        }, 0)
-      );
-    }, 0);
-  };
-
   const calcularCardioTotales = (
-    log: LogEntrenamiento
+    log: LogEntrenamiento,
   ): { minutos: number; distancia: number } => {
     return log.ejercicios.reduce(
       (acc, ej) => {
@@ -194,7 +178,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
           };
         }, acc);
       },
-      { minutos: 0, distancia: 0 }
+      { minutos: 0, distancia: 0 },
     );
   };
 
@@ -207,16 +191,18 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
 
   const formatSerieDisplay = (
     s: LogEntrenamiento["ejercicios"][number]["series"][number],
-    tipo: TipoEjercicio
+    tipo: TipoEjercicio,
   ): string => {
     if (!s.completado) return "NO COMPLETADA";
     if (tipo === "cardio") {
-      const min = (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
+      const min =
+        (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
       const km = (s.distanciaKm ?? 0) > 0 ? `${s.distanciaKm}km` : "";
       return [min, km].filter(Boolean).join(" // ") || "—";
     }
     if (tipo === "tiempo") {
-      const min = (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
+      const min =
+        (s.duracionMinutos ?? 0) > 0 ? `${s.duracionMinutos}min` : "—";
       const kg = (s.peso ?? 0) > 0 ? `${s.peso}kg` : "";
       return [min, kg].filter(Boolean).join(" // ") || "—";
     }
@@ -228,7 +214,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
 
   const formatSerieChip = (
     s: LogEntrenamiento["ejercicios"][number]["series"][number],
-    tipo: TipoEjercicio
+    tipo: TipoEjercicio,
   ): string | null => {
     if (!s.completado) return null;
     if (tipo === "cardio") {
@@ -245,7 +231,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
 
   const necesitaChipFuerza = (
     s: LogEntrenamiento["ejercicios"][number]["series"][number],
-    tipo: TipoEjercicio
+    tipo: TipoEjercicio,
   ): boolean => {
     if (tipo === "cardio" || tipo === "tiempo") return false;
     return (s.peso ?? 0) * (s.reps ?? 0) > 0;
@@ -318,7 +304,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
     index: number,
     total: number,
   ) => {
-    const volumenTotal = calcularVolumenTotal(log);
+    const volumenTotal = calcularVolumenTotal(log.ejercicios);
     const cardioTotales = calcularCardioTotales(log);
     const hayCardio = hasCardioEjercicios(log);
     const nombreRutina = getNombreRutinaFromLog(log);
@@ -398,8 +384,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                       {ej.series.map((s, sIdx) => {
                         const tipoEj = getTipoEjercicio(ej.ejercicioId);
                         const chipLabel = formatSerieChip(s, tipoEj);
-                        const showChipFuerza =
-                          necesitaChipFuerza(s, tipoEj);
+                        const showChipFuerza = necesitaChipFuerza(s, tipoEj);
                         return (
                           <Box
                             key={sIdx}
@@ -795,74 +780,90 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
               const rutinaId = plan?.dias[dia]?.rutinaId ?? null;
               const tipos = getTiposRutina(rutinaId);
               return (
-              <Box
-                key={dia}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 2,
-                  px: 1,
-                  py: 2,
-                  border: 1,
-                  borderColor: dia === diaSemana ? "primary.main" : "divider",
-                  bgcolor:
-                    dia === diaSemana ? "action.selected" : "background.paper",
-                }}
-              >
-                <Typography
-                  variant="button"
+                <Box
+                  key={dia}
                   sx={{
-                    minWidth: 80,
-                    color: dia === diaSemana ? "primary.main" : "text.primary",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    px: 1,
+                    py: 2,
+                    border: 1,
+                    borderColor: dia === diaSemana ? "primary.main" : "divider",
+                    bgcolor:
+                      dia === diaSemana
+                        ? "action.selected"
+                        : "background.paper",
                   }}
                 >
-                  {dia.toUpperCase()}
-                </Typography>
-                <FormControl size="small" fullWidth>
-                  <InputLabel id={`plan-${dia}-label`}>RUTINA</InputLabel>
-                  <Select
-                    labelId={`plan-${dia}-label`}
-                    value={rutinaId ?? ""}
-                    label="RUTINA"
-                    onChange={(e) =>
-                      handlePlanChange(
-                        dia,
-                        e.target.value === "" ? null : e.target.value,
-                      )
-                    }
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 2,
+                    }}
                   >
-                    <MenuItem value="">
-                      <em>DÍA DE DESCANSO</em>
-                    </MenuItem>
-                    {rutinas.map((r) => (
-                      <MenuItem key={r.id} value={r.id}>
-                        {r.nombre}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                {tipos.length > 0 && (
-                  <Box sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}>
-                    {tipos.map((t) => (
-                      <Chip
-                        key={t}
-                        label={TIPO_LABEL[t]}
-                        size="small"
-                        sx={{
-                          borderRadius: 0,
-                          fontSize: "0.6rem",
-                          height: 18,
-                          bgcolor: TIPO_COLOR[t],
-                          color: "#fff",
-                          fontWeight: "bold",
-                          letterSpacing: "0.03em",
-                        }}
-                      />
-                    ))}
+                    <Typography
+                      variant="button"
+                      sx={{
+                        minWidth: 80,
+                        color:
+                          dia === diaSemana ? "primary.main" : "text.primary",
+                      }}
+                    >
+                      {dia.toUpperCase()}
+                    </Typography>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id={`plan-${dia}-label`}>RUTINA</InputLabel>
+                      <Select
+                        labelId={`plan-${dia}-label`}
+                        value={rutinaId ?? ""}
+                        label="RUTINA"
+                        onChange={(e) =>
+                          handlePlanChange(
+                            dia,
+                            e.target.value === "" ? null : e.target.value,
+                          )
+                        }
+                      >
+                        <MenuItem value="">
+                          <em>DÍA DE DESCANSO</em>
+                        </MenuItem>
+                        {rutinas.map((r) => (
+                          <MenuItem key={r.id} value={r.id}>
+                            {r.nombre}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Box>
-                )}
-              </Box>
+                  {tipos.length > 0 && (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 0.5,
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      {tipos.map((t) => (
+                        <Chip
+                          key={t}
+                          label={TIPO_LABEL[t]}
+                          size="small"
+                          sx={{
+                            borderRadius: 0,
+                            fontSize: "0.6rem",
+                            height: 18,
+                            bgcolor: TIPO_COLOR[t],
+                            color: "#fff",
+                            fontWeight: "bold",
+                            letterSpacing: "0.03em",
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
               );
             })}
           </Stack>
@@ -878,9 +879,13 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
             </EmptyStateCard>
           ) : (
             <Stack spacing={1}>
-              {logsRecientes.map((log) => (
+              {logsRecientes.map((log) => {
+                const volLog = calcularVolumenTotal(log.ejercicios);
+                const cardioLog = calcularCardioTotales(log);
+                return (
                 <Box
                   key={log.id}
+                  onClick={() => onStartTraining(log.rutinaId, log.id)}
                   sx={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -888,18 +893,55 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                     p: 1.5,
                     border: 1,
                     borderColor: "divider",
+                    cursor: "pointer",
+                    "&:hover": { bgcolor: "action.hover" },
+                    transition: "background-color 0.15s",
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                    {getNombreRutinaFromLog(log)}
-                  </Typography>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                      {getNombreRutinaFromLog(log)}
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1.5, mt: 0.25, flexWrap: "wrap" }}>
+                      {volLog > 0 && (
+                        <Typography
+                          variant="caption"
+                          color="primary.main"
+                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
+                        >
+                          {volLog.toLocaleString("es-ES")} kg
+                        </Typography>
+                      )}
+                      {cardioLog.minutos > 0 && (
+                        <Typography
+                          variant="caption"
+                          color="primary.main"
+                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
+                        >
+                          {cardioLog.minutos.toLocaleString("es-ES")} min
+                        </Typography>
+                      )}
+                      {cardioLog.distancia > 0 && (
+                        <Typography
+                          variant="caption"
+                          color="primary.main"
+                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
+                        >
+                          {cardioLog.distancia.toLocaleString("es-ES")} km
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
                     <Typography variant="caption" color="text.secondary">
                       {new Date(log.fecha).toLocaleDateString("es-ES")}
                     </Typography>
                     <IconButton
                       size="small"
-                      onClick={() => onStartTraining(log.rutinaId, log.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartTraining(log.rutinaId, log.id);
+                      }}
                       sx={{
                         borderRadius: 0,
                         color: "text.secondary",
@@ -912,7 +954,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                     </IconButton>
                   </Box>
                 </Box>
-              ))}
+              )})}
             </Stack>
           )}
         </CardContent>

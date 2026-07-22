@@ -4,7 +4,6 @@ import {
   Box,
   Typography,
   IconButton,
-  Button,
   TextField,
   Card,
   CardContent,
@@ -22,10 +21,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import { useLiveQuery } from "dexie-react-hooks";
 import ReactMarkdown from "react-markdown";
-import {
-  db,
-  type MensajeChat,
-} from "../../core/db";
+import { db, type MensajeChat } from "../../core/db";
 import {
   enviarMensajeAGemini,
   enviarRespuestaFuncionAGemini,
@@ -55,7 +51,9 @@ const DRAWER_WIDTH = 280;
 
 export function CoachView() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sesionActivaId, setSesionActivaId] = useState<number | undefined>(undefined);
+  const [sesionActivaId, setSesionActivaId] = useState<number | undefined>(
+    undefined,
+  );
   const [mensajeInput, setMensajeInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [procesandoPropuesta, setProcesandoPropuesta] = useState(false);
@@ -65,22 +63,22 @@ export function CoachView() {
   // Leer sesiones de forma reactiva
   const sesiones =
     useLiveQuery(
-      () =>
-        db.sesiones_chat.orderBy("fechaActualizacion").reverse().toArray(),
+      () => db.sesiones_chat.orderBy("fechaActualizacion").reverse().toArray(),
       [],
     ) ?? [];
 
   // Leer sesión activa de forma reactiva
   const sesionActiva = useLiveQuery(
     () =>
-      sesionActivaId != null
-        ? db.sesiones_chat.get(sesionActivaId)
-        : undefined,
+      sesionActivaId != null ? db.sesiones_chat.get(sesionActivaId) : undefined,
     [sesionActivaId],
   );
 
   // Perfil (para verificar API key)
   const perfil = useLiveQuery(() => db.perfil_usuario.get(1), []);
+
+  // Nombre del coach (personalizado o por defecto)
+  const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
 
   // Crear primera sesión si no hay ninguna (usa ref para one-shot)
   const initRef = useRef(false);
@@ -100,7 +98,8 @@ export function CoachView() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [sesionActiva?.mensajes, loading, procesandoPropuesta]);
 
-  const tieneApiKey = perfil?.apiKeyGemini && perfil.apiKeyGemini.trim().length > 0;
+  const tieneApiKey =
+    perfil?.apiKeyGemini && perfil.apiKeyGemini.trim().length > 0;
 
   // ── Detectar si hay una propuesta pendiente ───────────────────────
   const mensajes = sesionActiva?.mensajes ?? [];
@@ -120,85 +119,87 @@ export function CoachView() {
   // respondido (ni confirmado ni cancelado) en mensajes posteriores.
   const hayPropuestaPendiente =
     lastFCIdx >= 0 &&
-    !mensajes.slice(lastFCIdx + 1).some(
-      (m) =>
-        m.role === "user" &&
-        (m.functionResponse != null ||
-          m.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
-    );
+    !mensajes
+      .slice(lastFCIdx + 1)
+      .some(
+        (m) =>
+          m.role === "user" &&
+          (m.functionResponse != null ||
+            m.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
+      );
 
-  const inputBloqueado = hayPropuestaPendiente || loading || procesandoPropuesta;
+  const inputBloqueado =
+    hayPropuestaPendiente || loading || procesandoPropuesta;
 
   /**
    * Ejecuta todas las functionCalls pendientes de una sesión.
    * Las busca iterando los mensajes del modelo que tienen functionCall
    * y que aún no tienen functionResponse en un mensaje de usuario posterior.
    */
-  const ejecutarAccionesPendientes = useCallback(
-    async (sId: number) => {
-      const sesion = await db.sesiones_chat.get(sId);
-      if (!sesion) return;
+  const ejecutarAccionesPendientes = useCallback(async (sId: number) => {
+    const sesion = await db.sesiones_chat.get(sId);
+    if (!sesion) return;
 
-      const mensajes = sesion.mensajes;
+    const mensajes = sesion.mensajes;
 
-      // Encontrar functionCalls del modelo que no han sido respondidos
-      for (let i = 0; i < mensajes.length; i++) {
-        const m = mensajes[i];
-        if (m.role === "model" && m.functionCall) {
-          // Verificar si ya fue respondido en mensajes posteriores
-          const yaRespondido = mensajes.slice(i + 1).some(
+    // Encontrar functionCalls del modelo que no han sido respondidos
+    for (let i = 0; i < mensajes.length; i++) {
+      const m = mensajes[i];
+      if (m.role === "model" && m.functionCall) {
+        // Verificar si ya fue respondido en mensajes posteriores
+        const yaRespondido = mensajes
+          .slice(i + 1)
+          .some(
             (post) =>
               post.role === "user" &&
               (post.functionResponse?.name === m.functionCall!.name ||
                 post.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
           );
 
-          if (yaRespondido) continue;
+        if (yaRespondido) continue;
 
-          // Ejecutar la función
-          try {
-            const result = await executeFunctionCall({
+        // Ejecutar la función
+        try {
+          const result = await executeFunctionCall({
+            name: m.functionCall.name,
+            args: m.functionCall.args,
+          } as unknown as FunctionCallArgs);
+
+          const success = result?.success === true;
+          const msgRespuesta: MensajeChat = {
+            id: msgId(),
+            role: "user",
+            texto: success
+              ? `[✓] ${m.functionCall.name} ejecutado correctamente.`
+              : `[✗] ${m.functionCall.name} falló: ${result?.message ?? "error desconocido"}`,
+            timestamp: new Date().toISOString(),
+            functionResponse: {
               name: m.functionCall.name,
-              args: m.functionCall.args,
-            } as unknown as FunctionCallArgs);
-
-            const success = result?.success === true;
-            const msgRespuesta: MensajeChat = {
-              id: msgId(),
-              role: "user",
-              texto: success
-                ? `[✓] ${m.functionCall.name} ejecutado correctamente.`
-                : `[✗] ${m.functionCall.name} falló: ${result?.message ?? "error desconocido"}`,
-              timestamp: new Date().toISOString(),
-              functionResponse: {
-                name: m.functionCall.name,
-                response: result as unknown as Record<string, unknown>,
+              response: result as unknown as Record<string, unknown>,
+            },
+          };
+          await agregarMensajeASesion(sId, msgRespuesta);
+        } catch (err) {
+          const errMsg =
+            err instanceof Error ? err.message : "error desconocido";
+          const msgRespuesta: MensajeChat = {
+            id: msgId(),
+            role: "user",
+            texto: `[✗] ${m.functionCall.name} falló: ${errMsg}`,
+            timestamp: new Date().toISOString(),
+            functionResponse: {
+              name: m.functionCall.name,
+              response: {
+                success: false,
+                error: errMsg,
               },
-            };
-            await agregarMensajeASesion(sId, msgRespuesta);
-          } catch (err) {
-            const errMsg =
-              err instanceof Error ? err.message : "error desconocido";
-            const msgRespuesta: MensajeChat = {
-              id: msgId(),
-              role: "user",
-              texto: `[✗] ${m.functionCall.name} falló: ${errMsg}`,
-              timestamp: new Date().toISOString(),
-              functionResponse: {
-                name: m.functionCall.name,
-                response: {
-                  success: false,
-                  error: errMsg,
-                },
-              },
-            };
-            await agregarMensajeASesion(sId, msgRespuesta);
-          }
+            },
+          };
+          await agregarMensajeASesion(sId, msgRespuesta);
         }
       }
-    },
-    [],
-  );
+    }
+  }, []);
 
   /**
    * Procesa la respuesta de Gemini: guarda el mensaje del modelo.
@@ -270,7 +271,9 @@ export function CoachView() {
     try {
       await agregarMensajeASesion(sId, msgUsuario);
     } catch {
-      setErrorMsg("[!] ERROR AL GUARDAR EL MENSAJE LOCALMENTE. Intenta de nuevo.");
+      setErrorMsg(
+        "[!] ERROR AL GUARDAR EL MENSAJE LOCALMENTE. Intenta de nuevo.",
+      );
       setLoading(false);
       return;
     }
@@ -291,7 +294,14 @@ export function CoachView() {
     } finally {
       setLoading(false);
     }
-  }, [mensajeInput, loading, procesandoPropuesta, sesionActivaId, hayPropuestaPendiente, procesarRespuestaGemini]);
+  }, [
+    mensajeInput,
+    loading,
+    procesandoPropuesta,
+    sesionActivaId,
+    hayPropuestaPendiente,
+    procesarRespuestaGemini,
+  ]);
 
   /**
    * El usuario confirma la propuesta. Ejecuta las herramientas y
@@ -470,18 +480,22 @@ export function CoachView() {
       </Typography>
     ),
     h2: ({ children }: { children?: React.ReactNode }) => (
-      <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 0.5, mt: 1 }}>
+      <Typography
+        variant="subtitle1"
+        sx={{ fontWeight: "bold", mb: 0.5, mt: 1 }}
+      >
         {children}
       </Typography>
     ),
     h3: ({ children }: { children?: React.ReactNode }) => (
-      <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 0.5, mt: 0.75 }}>
+      <Typography
+        variant="subtitle2"
+        sx={{ fontWeight: "bold", mb: 0.5, mt: 0.75 }}
+      >
         {children}
       </Typography>
     ),
-    hr: () => (
-      <Box sx={{ borderTop: 1, borderColor: "divider", my: 1.5 }} />
-    ),
+    hr: () => <Box sx={{ borderTop: 1, borderColor: "divider", my: 1.5 }} />,
   };
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -548,9 +562,7 @@ export function CoachView() {
           sesiones.map((s) => {
             const esActiva = s.id === sesionActivaId;
             const ultimoMensaje =
-              s.mensajes.length > 0
-                ? s.mensajes[s.mensajes.length - 1]
-                : null;
+              s.mensajes.length > 0 ? s.mensajes[s.mensajes.length - 1] : null;
             return (
               <Box
                 key={s.id}
@@ -603,7 +615,7 @@ export function CoachView() {
                   >
                     {ultimoMensaje
                       ? ultimoMensaje.texto.slice(0, 60) +
-                      (ultimoMensaje.texto.length > 60 ? "…" : "")
+                        (ultimoMensaje.texto.length > 60 ? "…" : "")
                       : "[ VACÍA ]"}
                   </Typography>
                   <Typography
@@ -696,7 +708,7 @@ export function CoachView() {
               color="text.secondary"
               sx={{ letterSpacing: "0.05em" }}
             >
-              PERFORMANCE_OS
+              {coachName}
             </Typography>
             <Typography
               variant="caption"
@@ -742,7 +754,15 @@ export function CoachView() {
                 [ ACCIÓN YA RESUELTA ]
               </Typography>
               {funcionesDelTurno.map((fc, fi) => (
-                <Box key={fi} sx={{ mt: 0.5, minWidth: 0, overflowWrap: "break-word", wordBreak: "break-word" }}>
+                <Box
+                  key={fi}
+                  sx={{
+                    mt: 0.5,
+                    minWidth: 0,
+                    overflowWrap: "break-word",
+                    wordBreak: "break-word",
+                  }}
+                >
                   <Typography variant="caption" color="text.primary">
                     → {fc.name}:
                   </Typography>{" "}
@@ -800,9 +820,7 @@ export function CoachView() {
               }}
             >
               {success ? (
-                <CheckCircleIcon
-                  sx={{ fontSize: 14, color: "primary.main" }}
-                />
+                <CheckCircleIcon sx={{ fontSize: 14, color: "primary.main" }} />
               ) : (
                 <ErrorIcon sx={{ fontSize: 14, color: "error.main" }} />
               )}
@@ -876,7 +894,7 @@ export function CoachView() {
               color="text.secondary"
               sx={{ letterSpacing: "0.05em" }}
             >
-              {esUser ? "YO" : "PERFORMANCE_OS"}
+              {esUser ? "YO" : coachName}
             </Typography>
             <Typography
               variant="caption"
@@ -907,16 +925,13 @@ export function CoachView() {
   if (!tieneApiKey) {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        <PageHeader>COACH IA // PERFORMANCE_OS</PageHeader>
+        <PageHeader>ENTRENADOR // {coachName}</PageHeader>
         <Card>
           <CardContent sx={{ textAlign: "center", py: 6 }}>
             <AutoAwesomeRoundedIcon
               sx={{ fontSize: 48, color: "text.secondary", mb: 2 }}
             />
-            <Typography
-              variant="h6"
-              sx={{ letterSpacing: "0.05em", mb: 1 }}
-            >
+            <Typography variant="h6" sx={{ letterSpacing: "0.05em", mb: 1 }}>
               [ API KEY NO CONFIGURADA ]
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -960,14 +975,15 @@ export function CoachView() {
         >
           <MenuIcon />
         </IconButton>
-        <PageHeader sx={{ flexGrow: 1 }}>
-          COACH IA // PERFORMANCE_OS
-        </PageHeader>
+        <PageHeader sx={{ flexGrow: 1 }}>ENTRENADOR// {coachName}</PageHeader>
         {sesionActiva && (
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ letterSpacing: "0.03em", display: { xs: "none", sm: "block" } }}
+            sx={{
+              letterSpacing: "0.03em",
+              display: { xs: "none", sm: "block" },
+            }}
           >
             {sesionActiva.titulo.toUpperCase()}
           </Typography>
@@ -1032,17 +1048,13 @@ export function CoachView() {
                     color="text.secondary"
                     sx={{ letterSpacing: "0.05em" }}
                   >
-                    [ PERFORMANCE_OS ACTIVO // ENVÍA TU PRIMER MENSAJE ]
+                    [ {coachName} ACTIVO // ENVÍA TU PRIMER MENSAJE ]
                   </Typography>
                 </Box>
               </EmptyStateCard>
             </Box>
           ) : (
-            <>
-              {mensajes.map((msg, idx) =>
-                renderMensaje(msg, idx),
-              )}
-            </>
+            <>{mensajes.map((msg, idx) => renderMensaje(msg, idx))}</>
           )}
 
           {/* Error */}
@@ -1092,7 +1104,7 @@ export function CoachView() {
                   letterSpacing: "0.05em",
                 }}
               >
-                PERFORMANCE_OS ANALIZANDO
+                {coachName} ANALIZANDO
               </Typography>
               <CircularProgress
                 size={12}
@@ -1127,9 +1139,7 @@ export function CoachView() {
                 mb: 2,
               }}
             >
-              <CheckCircleIcon
-                sx={{ fontSize: 14, color: "primary.main" }}
-              />
+              <CheckCircleIcon sx={{ fontSize: 14, color: "primary.main" }} />
               <Typography
                 variant="body2"
                 color="primary.main"
@@ -1165,11 +1175,19 @@ export function CoachView() {
         <Box
           sx={{
             display: "flex",
-            gap: 1,
-            p: 2,
+            alignItems: "flex-end",
+            gap: 0.5,
+            px: 1.5,
+            py: 0.5,
+            mx: 2,
+            mb: 2,
             border: 1,
-            borderColor: "divider",
+            borderColor: inputBloqueado ? "divider" : "primary.main",
             bgcolor: "background.paper",
+            transition: "border-color 0.2s",
+            "&:focus-within": {
+              borderColor: "primary.main",
+            },
           }}
         >
           <TextField
@@ -1177,10 +1195,11 @@ export function CoachView() {
             multiline
             maxRows={4}
             minRows={1}
+            variant="standard"
             placeholder={
               inputBloqueado
                 ? "[>] RESUELVE LA PROPUESTA ANTES DE CONTINUAR…"
-                : "[>] ESCRIBE TU MENSAJE… [ENTER PARA ENVIAR]"
+                : "Pregunta lo que quieras"
             }
             value={mensajeInput}
             onChange={(e) => {
@@ -1191,34 +1210,33 @@ export function CoachView() {
             disabled={inputBloqueado}
             slotProps={{
               input: {
+                disableUnderline: true,
                 sx: {
-                  borderRadius: 0,
                   fontFamily: '"Courier New", Courier, monospace',
                   letterSpacing: "0.03em",
+                  py: 1,
                 },
               },
             }}
             sx={{
-              "& .MuiOutlinedInput-root": {
+              "& .MuiInputBase-root": {
                 borderRadius: 0,
               },
             }}
           />
-          <Button
-            variant="contained"
-            color="primary"
-            disableElevation
+          <IconButton
             onClick={handleEnviarMensaje}
             disabled={inputBloqueado || mensajeInput.trim().length === 0}
             sx={{
               borderRadius: 0,
-              minWidth: 56,
-              alignSelf: "flex-end",
+              color: "primary.main",
+              flexShrink: 0,
+              "&.Mui-disabled": { color: "text.disabled" },
             }}
             aria-label="Enviar mensaje"
           >
-            <SendIcon />
-          </Button>
+            <SendIcon fontSize="small" />
+          </IconButton>
         </Box>
       </Box>
     </Box>

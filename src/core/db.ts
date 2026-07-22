@@ -127,6 +127,8 @@ export interface PerfilUsuario {
   sexoBio?: SexoBiologico;
   objetivo?: ObjetivoFitness;
   apiKeyGemini?: string;
+  /** Nombre personalizado del asistente IA (por defecto "PERFORMANCE_OS"). */
+  nombreCoach?: string;
 }
 
 export interface FunctionCallPart {

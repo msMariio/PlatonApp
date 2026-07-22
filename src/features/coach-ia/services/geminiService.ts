@@ -16,6 +16,9 @@ interface GeminiFunctionCallPart {
     name: string;
     args: Record<string, unknown>;
   };
+  /** Gemini API usa snake_case en peticiones. */
+  thought_signature?: string;
+  /** Gemini puede devolver camelCase en respuestas (estándar JSON de Google). */
   thoughtSignature?: string;
 }
 
@@ -295,9 +298,9 @@ function mensajesToGeminiContents(mensajes: MensajeChat[]): GeminiContent[] {
           args: m.functionCall.args,
         },
       };
-      // Incluir thoughtSignature si está presente (requerido por Gemini)
+      // Incluir thought_signature si está presente (requerido por Gemini)
       if (m.functionCall.thoughtSignature) {
-        (fcPart as GeminiFunctionCallPart).thoughtSignature =
+        (fcPart as GeminiFunctionCallPart).thought_signature =
           m.functionCall.thoughtSignature;
       }
       parts.push(fcPart);
@@ -381,7 +384,7 @@ function parseGeminiResponse(data: GeminiResponse): GeminiResult {
       functionCalls.push({
         name: part.functionCall.name,
         args: part.functionCall.args,
-        thoughtSignature: part.thoughtSignature,
+        thoughtSignature: part.thoughtSignature ?? part.thought_signature,
       });
     }
   }
@@ -418,7 +421,13 @@ export async function enviarMensajeAGemini(
 
   const snapshot = await buildLocalSnapshot();
 
-  const systemInstruction = `${SYSTEM_PROMPT_PERFORMANCE_OS}
+  const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
+  const systemPrompt = SYSTEM_PROMPT_PERFORMANCE_OS.replace(
+    "PERFORMANCE_OS",
+    coachName,
+  );
+
+  const systemInstruction = `${systemPrompt}
 
 ================================================================
 LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
@@ -459,7 +468,13 @@ export async function enviarRespuestaFuncionAGemini(
 
   const snapshot = await buildLocalSnapshot();
 
-  const systemInstruction = `${SYSTEM_PROMPT_PERFORMANCE_OS}
+  const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
+  const systemPrompt = SYSTEM_PROMPT_PERFORMANCE_OS.replace(
+    "PERFORMANCE_OS",
+    coachName,
+  );
+
+  const systemInstruction = `${systemPrompt}
 
 ================================================================
 LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})

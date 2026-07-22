@@ -42,6 +42,7 @@ export function PerfilView() {
   const [sexoBio, setSexoBio] = useState<SexoBiologico | null>(null);
   const [objetivo, setObjetivo] = useState<ObjetivoFitness | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [nombreCoach, setNombreCoach] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [guardado, setGuardado] = useState(false);
 
@@ -55,6 +56,7 @@ export function PerfilView() {
     setSexoBio(perfil.sexoBio ?? null);
     setObjetivo(perfil.objetivo ?? null);
     setApiKey(perfil.apiKeyGemini ?? "");
+    setNombreCoach(perfil.nombreCoach ?? "");
   }
 
   // Reset hydrated when perfil changes
@@ -71,11 +73,12 @@ export function PerfilView() {
       sexoBio: sexoBio ?? undefined,
       objetivo: objetivo ?? undefined,
       apiKeyGemini: apiKey.trim() || undefined,
+      nombreCoach: nombreCoach.trim() || undefined,
     };
     await db.perfil_usuario.put(datos);
     setGuardado(true);
     setTimeout(() => setGuardado(false), 2500);
-  }, [nombre, alturaCm, fechaNacimiento, sexoBio, objetivo, apiKey]);
+  }, [nombre, alturaCm, fechaNacimiento, sexoBio, objetivo, apiKey, nombreCoach]);
 
   return (
     <Stack spacing={3}>
@@ -166,6 +169,14 @@ export function PerfilView() {
         <CardContent>
           <Stack spacing={2.5}>
             <SectionLabel>CONFIGURACIÓN IA // COACH SYSTEM</SectionLabel>
+
+            <AppTextField
+              label="NOMBRE DEL ASISTENTE (opcional)"
+              fullWidth
+              value={nombreCoach}
+              onChange={(e) => setNombreCoach(e.target.value)}
+              placeholder="PERFORMANCE_OS"
+            />
 
             <AppTextField
               type={showKey ? "text" : "password"}

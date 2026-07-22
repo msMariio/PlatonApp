@@ -53,10 +53,11 @@ export function buildEjerciciosRealesDesdeRutina(
       series: ej.series.map((s, idx) => {
         const logSerie = logEj?.series[idx];
         return {
-          peso: 0,
-          reps: 0,
-          duracionMinutos: 0,
-          distanciaKm: 0,
+          // Copiar valores objetivo de la rutina como valores iniciales
+          peso: s.pesoObjetivo ?? 0,
+          reps: s.repsObjetivo ?? 0,
+          duracionMinutos: s.duracionObjetivoMinutos ?? 0,
+          distanciaKm: s.distanciaObjetivoKm ?? 0,
           nivelInclinacion: 0,
           completado: false,
           rpe: s.rpeObjetivo ?? logSerie?.rpe,
@@ -137,6 +138,21 @@ export async function actualizarLogEntrenamiento(
     updated.fecha = fecha;
   }
   await db.logsEntrenamientos.put(updated);
+}
+
+/** Volumen total (peso × reps) de series completadas en un array de ejercicios. */
+export function calcularVolumenTotal(ejercicios: EjercicioReal[]): number {
+  return ejercicios.reduce((acc, ej) => {
+    return (
+      acc +
+      ej.series.reduce((sAcc, s) => {
+        if (s.completado) {
+          return sAcc + (s.peso ?? 0) * (s.reps ?? 0);
+        }
+        return sAcc;
+      }, 0)
+    );
+  }, 0);
 }
 
 export async function eliminarLogEntrenamiento(

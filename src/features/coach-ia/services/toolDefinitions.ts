@@ -1,8 +1,4 @@
-import type {
-  GrupoMuscular,
-  TipoEjercicio,
-  DiaSemana,
-} from "../../../core/db";
+import type { GrupoMuscular, TipoEjercicio, DiaSemana } from "../../../core/db";
 
 // ── Tipos de las herramientas ────────────────────────────────────────
 
@@ -41,11 +37,20 @@ export interface ActualizarPlanificacionSemanalArgs {
   dias: Partial<Record<DiaSemana, string | null>>;
 }
 
+export interface EjercicioAQuitarArgs {
+  ejercicioId?: string;
+  ejercicioNombre?: string;
+}
+
 export interface EditarRutinaArgs {
   rutinaId?: string;
   rutinaNombre?: string;
   nombre?: string;
   descripcion?: string;
+  /** Ejercicios a añadir a la rutina (se añaden al final). */
+  ejerciciosAgregar?: EjercicioEnRutinaArgs[];
+  /** Ejercicios a quitar de la rutina (se busca por ID o nombre exacto). */
+  ejerciciosQuitar?: EjercicioAQuitarArgs[];
 }
 
 export interface EditarEjercicioArgs {
@@ -98,18 +103,50 @@ export interface RegistrarEntrenamientoArgs {
   notas?: string;
 }
 
+export interface SerieRealModificarArgs {
+  /** Índice de la serie a modificar (0-based). Obligatorio para identificar la serie. */
+  serieIdx: number;
+  peso?: number;
+  reps?: number;
+  completado?: boolean;
+  rpe?: number;
+  duracionMinutos?: number;
+  distanciaKm?: number;
+}
+
+export interface EditarEntrenamientoArgs {
+  /** Fecha del entrenamiento a editar (YYYY-MM-DD). Obligatorio para encontrar el log. */
+  fecha: string;
+  rutinaId?: string;
+  rutinaNombre?: string;
+  /** Ejercicios a añadir al entrenamiento existente (con series reales completadas). */
+  ejerciciosAgregar?: EjercicioRealArgs[];
+  /** Ejercicios a quitar del entrenamiento (por ID o nombre del ejercicio). */
+  ejerciciosQuitar?: EjercicioAQuitarArgs[];
+  /** Modificar series de ejercicios ya existentes en el log. Identifica el ejercicio por ID/nombre y especifica qué series modificar por su índice. */
+  ejerciciosModificar?: {
+    ejercicioId?: string;
+    ejercicioNombre?: string;
+    series: SerieRealModificarArgs[];
+  }[];
+  notas?: string;
+}
+
 export type FunctionCallArgs =
   | { name: "crear_carpeta"; args: CrearCarpetaArgs }
   | { name: "crear_ejercicio"; args: CrearEjercicioArgs }
   | { name: "crear_rutina"; args: CrearRutinaArgs }
-  | { name: "actualizar_planificacion_semanal"; args: ActualizarPlanificacionSemanalArgs }
+  | {
+      name: "actualizar_planificacion_semanal";
+      args: ActualizarPlanificacionSemanalArgs;
+    }
   | { name: "editar_rutina"; args: EditarRutinaArgs }
   | { name: "editar_ejercicio"; args: EditarEjercicioArgs }
   | { name: "editar_carpeta"; args: EditarCarpetaArgs }
   | { name: "registrar_peso"; args: RegistrarPesoArgs }
   | { name: "editar_peso"; args: EditarPesoArgs }
-  | { name: "registrar_entrenamiento"; args: RegistrarEntrenamientoArgs };
-
+  | { name: "registrar_entrenamiento"; args: RegistrarEntrenamientoArgs }
+  | { name: "editar_entrenamiento"; args: EditarEntrenamientoArgs };
 
 // ── Declaraciones de herramientas para Gemini ────────────────────────
 
@@ -134,7 +171,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         nombre: {
           type: "string",
-          description: "Nombre descriptivo de la carpeta (ej: 'Empuje', 'Tren Superior').",
+          description:
+            "Nombre descriptivo de la carpeta (ej: 'Empuje', 'Tren Superior').",
         },
       },
       required: ["nombre"],
@@ -150,7 +188,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         nombre: {
           type: "string",
-          description: "Nombre del ejercicio (ej: 'Press Banca', 'Sentadilla').",
+          description:
+            "Nombre del ejercicio (ej: 'Press Banca', 'Sentadilla').",
         },
         grupoMuscular: {
           type: "string",
@@ -168,7 +207,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         descripcion: {
           type: "string",
-          description: "Descripción opcional, técnica o notas sobre el ejercicio.",
+          description:
+            "Descripción opcional, técnica o notas sobre el ejercicio.",
         },
         tipo: {
           type: "string",
@@ -194,7 +234,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         descripcion: {
           type: "string",
-          description: "Descripción opcional de la rutina (objetivo, notas, etc.).",
+          description:
+            "Descripción opcional de la rutina (objetivo, notas, etc.).",
         },
         carpetaId: {
           type: "string",
@@ -210,8 +251,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         ejercicios: {
           type: "array",
-          description:
-            "Lista ordenada de ejercicios que componen la rutina.",
+          description: "Lista ordenada de ejercicios que componen la rutina.",
           items: {
             type: "object",
             properties: {
@@ -227,7 +267,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               series: {
                 type: "integer",
-                description: "Número de series para este ejercicio (ej: 3, 4, 5).",
+                description:
+                  "Número de series para este ejercicio (ej: 3, 4, 5).",
               },
               repsObjetivo: {
                 type: "integer",
@@ -243,7 +284,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               descansoMinutos: {
                 type: "number",
-                description: "Descanso entre series en minutos (opcional, por defecto 2).",
+                description:
+                  "Descanso entre series en minutos (opcional, por defecto 2).",
               },
               duracionObjetivoMinutos: {
                 type: "number",
@@ -252,11 +294,13 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               distanciaObjetivoKm: {
                 type: "number",
-                description: "Distancia objetivo en km. Para ejercicios de cardio.",
+                description:
+                  "Distancia objetivo en km. Para ejercicios de cardio.",
               },
               notas: {
                 type: "string",
-                description: "Notas adicionales para este ejercicio (opcional).",
+                description:
+                  "Notas adicionales para este ejercicio (opcional).",
               },
             },
             required: ["series"],
@@ -284,37 +328,44 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
             lunes: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el lunes, o null para descanso.",
+              description:
+                "ID de la rutina para el lunes, o null para descanso.",
             },
             martes: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el martes, o null para descanso.",
+              description:
+                "ID de la rutina para el martes, o null para descanso.",
             },
             miercoles: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el miércoles, o null para descanso.",
+              description:
+                "ID de la rutina para el miércoles, o null para descanso.",
             },
             jueves: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el jueves, o null para descanso.",
+              description:
+                "ID de la rutina para el jueves, o null para descanso.",
             },
             viernes: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el viernes, o null para descanso.",
+              description:
+                "ID de la rutina para el viernes, o null para descanso.",
             },
             sabado: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el sábado, o null para descanso.",
+              description:
+                "ID de la rutina para el sábado, o null para descanso.",
             },
             domingo: {
               type: "string",
               nullable: true,
-              description: "ID de la rutina para el domingo, o null para descanso.",
+              description:
+                "ID de la rutina para el domingo, o null para descanso.",
             },
           },
         },
@@ -325,8 +376,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "editar_rutina",
     description:
-      "Edita una rutina existente (nombre y/o descripción). " +
-      "Úsala cuando el atleta quiera renombrar o actualizar la descripción de una rutina.",
+      "Edita una rutina existente: cambiar nombre/descripción, añadir ejercicios o quitar ejercicios. " +
+      "Úsala cuando el atleta quiera modificar una rutina ya creada (renombrar, añadir/quitar ejercicios).",
     parameters: {
       type: "object",
       properties: {
@@ -347,6 +398,75 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         descripcion: {
           type: "string",
           description: "Nueva descripción para la rutina.",
+        },
+        ejerciciosAgregar: {
+          type: "array",
+          description:
+            "Ejercicios a añadir a la rutina existente. Se añaden al final de la lista actual. " +
+            "Cada ejercicio debe tener al menos 'series' y 'ejercicioId' o 'ejercicioNombre'.",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description:
+                  "ID del ejercicio del catálogo. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description:
+                  "Nombre del ejercicio. Si no existe en el catálogo, se creará automáticamente con grupoMuscular 'fullbody' y tipo 'fuerza'.",
+              },
+              series: {
+                type: "integer",
+                description: "Número de series para este ejercicio.",
+              },
+              repsObjetivo: {
+                type: "integer",
+                description: "Repeticiones objetivo por serie.",
+              },
+              pesoObjetivo: {
+                type: "number",
+                description: "Peso objetivo en kg.",
+              },
+              descansoMinutos: {
+                type: "number",
+                description: "Descanso entre series en minutos.",
+              },
+              duracionObjetivoMinutos: {
+                type: "number",
+                description: "Duración objetivo en minutos (cardio/tiempo).",
+              },
+              distanciaObjetivoKm: {
+                type: "number",
+                description: "Distancia objetivo en km (cardio).",
+              },
+              notas: {
+                type: "string",
+                description:
+                  "Notas adicionales para este ejercicio (opcional).",
+              },
+            },
+            required: ["series"],
+          },
+        },
+        ejerciciosQuitar: {
+          type: "array",
+          description:
+            "Ejercicios a quitar de la rutina. Identifica cada uno por su ejercicioId o ejercicioNombre (nombre exacto).",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio a quitar.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description: "Nombre exacto del ejercicio a quitar.",
+              },
+            },
+          },
         },
       },
       required: [],
@@ -465,8 +585,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         fecha: {
           type: "string",
-          description:
-            "Fecha del registro a modificar en formato YYYY-MM-DD.",
+          description: "Fecha del registro a modificar en formato YYYY-MM-DD.",
         },
         hora: {
           type: "string",
@@ -516,7 +635,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
             properties: {
               ejercicioId: {
                 type: "string",
-                description: "ID del ejercicio. Si no se conoce, usa ejercicioNombre.",
+                description:
+                  "ID del ejercicio. Si no se conoce, usa ejercicioNombre.",
               },
               ejercicioNombre: {
                 type: "string",
@@ -539,7 +659,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                     },
                     completado: {
                       type: "boolean",
-                      description: "Si la serie se completó (por defecto true).",
+                      description:
+                        "Si la serie se completó (por defecto true).",
                     },
                     rpe: {
                       type: "number",
@@ -552,7 +673,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                     },
                     distanciaKm: {
                       type: "number",
-                      description: "Distancia en km (para ejercicios de cardio).",
+                      description:
+                        "Distancia en km (para ejercicios de cardio).",
                     },
                   },
                 },
@@ -567,6 +689,135 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: [],
+    },
+  },
+  {
+    name: "editar_entrenamiento",
+    description:
+      "Edita un entrenamiento YA REGISTRADO en el historial. " +
+      "NO crea un nuevo entrenamiento; modifica uno existente. " +
+      "Permite añadir ejercicios, quitar ejercicios, o modificar series de ejercicios existentes. " +
+      "Úsala cuando el atleta quiera cambiar algo de un entreno que ya anotó " +
+      "(ej: 'añade 20 min de caminar al entreno de hoy', " +
+      "'quita el press banca del entreno del lunes', " +
+      "'en el entreno de ayer cambia la primera serie de sentadilla a 100kg'). " +
+      "Busca el log por fecha y rutinaId/rutinaNombre.",
+    parameters: {
+      type: "object",
+      properties: {
+        fecha: {
+          type: "string",
+          description:
+            "Fecha del entrenamiento a editar en formato YYYY-MM-DD.",
+        },
+        rutinaId: {
+          type: "string",
+          description:
+            "ID de la rutina del entrenamiento a editar. Si no se conoce, usa rutinaNombre.",
+        },
+        rutinaNombre: {
+          type: "string",
+          description:
+            "Nombre de la rutina del entrenamiento a editar (se buscará por nombre exacto).",
+        },
+        ejerciciosAgregar: {
+          type: "array",
+          description:
+            "Ejercicios a añadir al entrenamiento, con sus series reales completadas.",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description: "Nombre del ejercicio. Si no existe se creará automáticamente.",
+              },
+              series: {
+                type: "array",
+                description: "Series realizadas.",
+                items: {
+                  type: "object",
+                  properties: {
+                    peso: { type: "number", description: "Peso en kg." },
+                    reps: { type: "integer", description: "Repeticiones." },
+                    completado: { type: "boolean", description: "Serie completada." },
+                    duracionMinutos: { type: "number", description: "Duración en minutos." },
+                    distanciaKm: { type: "number", description: "Distancia en km." },
+                  },
+                },
+              },
+            },
+            required: ["series"],
+          },
+        },
+        ejerciciosQuitar: {
+          type: "array",
+          description:
+            "Ejercicios a quitar del entrenamiento. Identifica cada uno por su ejercicioId o ejercicioNombre (nombre exacto).",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio a quitar.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description: "Nombre exacto del ejercicio a quitar.",
+              },
+            },
+          },
+        },
+        ejerciciosModificar: {
+          type: "array",
+          description:
+            "Modificar series de ejercicios YA EXISTENTES en el log. " +
+            "Identifica cada ejercicio por ID o nombre, y especifica qué series modificar por su índice (0 = primera serie). " +
+            "Úsala para cambiar pesos, reps, o marcar series como completadas/no completadas.",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio a modificar. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description: "Nombre exacto del ejercicio a modificar.",
+              },
+              series: {
+                type: "array",
+                description:
+                  "Series a modificar. Cada entrada debe tener serieIdx (obligatorio) y los campos a cambiar.",
+                items: {
+                  type: "object",
+                  properties: {
+                    serieIdx: {
+                      type: "integer",
+                      description: "Índice de la serie a modificar (0 = primera, 1 = segunda, etc.).",
+                    },
+                    peso: { type: "number", description: "Nuevo peso en kg." },
+                    reps: { type: "integer", description: "Nuevas repeticiones." },
+                    completado: { type: "boolean", description: "Marcar serie como completada o no." },
+                    rpe: { type: "number", description: "Nuevo RPE (1-10)." },
+                    duracionMinutos: { type: "number", description: "Nueva duración en minutos." },
+                    distanciaKm: { type: "number", description: "Nueva distancia en km." },
+                  },
+                  required: ["serieIdx"],
+                },
+              },
+            },
+          },
+        },
+        notas: {
+          type: "string",
+          description: "Nuevas notas para el entrenamiento (reemplaza las existentes).",
+        },
+      },
+      required: ["fecha"],
     },
   },
 ];

@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Box,
   Button,
+  Card,
+  CardContent,
   Typography,
   IconButton,
   TextField,
@@ -14,6 +16,7 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   db,
@@ -33,6 +36,7 @@ import {
   eliminarLogEntrenamiento,
   buildEjerciciosRealesDesdeRutina,
   getPlaceholderSerie,
+  calcularVolumenTotal,
   CUSTOM_LIBRE_ID,
 } from "./data";
 
@@ -131,6 +135,8 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     const current = JSON.stringify({ ejercicios, notas, fecha });
     return current !== initialSnapshot.current;
   }, [ejercicios, notas, fecha]);
+
+  const volumenTotal = useMemo(() => calcularVolumenTotal(ejercicios), [ejercicios]);
 
   const handleBackClick = useCallback(() => {
     if (isDirty) {
@@ -309,6 +315,35 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         }}
         sx={{ mt: 1 }}
       />
+
+      {volumenTotal > 0 && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              py: 2,
+              "&:last-child": { pb: 2 },
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <FitnessCenterIcon
+                sx={{ fontSize: 20, color: "primary.main" }}
+              />
+              <Typography variant="button" color="text.secondary">
+                VOLUMEN TOTAL
+              </Typography>
+            </Box>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: "bold", color: "primary.main" }}
+            >
+              {volumenTotal.toLocaleString("es-ES")} kg
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
 
       <Button
         variant="contained"
