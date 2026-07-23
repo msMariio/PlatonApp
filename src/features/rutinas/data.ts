@@ -36,7 +36,12 @@ export async function eliminarCarpeta(
   borrarHijas: boolean
 ): Promise<void> {
   if (borrarHijas) {
-    await db.rutinas.where("carpetaId").equals(id).delete();
+    // Usar eliminarRutina en cada hija para respetar el soft-delete
+    // cuando haya logs que referencien la rutina.
+    const hijas = await db.rutinas.where("carpetaId").equals(id).toArray();
+    for (const r of hijas) {
+      await eliminarRutina(r.id);
+    }
   } else {
     await db.rutinas
       .where("carpetaId")
@@ -89,8 +94,31 @@ export async function crearRutina(
   return id;
 }
 
-export async function eliminarRutina(id: string): Promise<void> {
+export async function eliminarRutina(id: string): Promise<"borrado" | "archivado"> {
+  const enUso = await checkRutinaTieneLogs(id);
+
+  if (enUso) {
+    // Soft delete: archivar para no romper logs históricos
+    await db.rutinas.update(id, { isArchived: true });
+    return "archivado";
+  }
+
+  // Hard delete: borrar físicamente
   await db.rutinas.delete(id);
+  return "borrado";
+}
+
+/** Comprueba si una rutina tiene logs de entrenamiento que la referencian. */
+export async function checkRutinaTieneLogs(id: string): Promise<boolean> {
+  const count = await db.logsEntrenamientos
+    .where("rutinaId")
+    .equals(id)
+    .count();
+  return count > 0;
+}
+
+export async function desarchivarRutina(id: string): Promise<void> {
+  await db.rutinas.update(id, { isArchived: false });
 }
 
 export async function renombrarRutina(
@@ -149,6 +177,47 @@ export async function crearEjercicio(input: {
   const ej: Ejercicio = { ...input, tipo: input.tipo ?? "fuerza", id };
   await db.ejercicios.add(ej);
   return id;
+}
+
+export async function eliminarEjercicio(id: string): Promise<"borrado" | "archivado"> {
+  // Comprobar si el ejercicio se usa en alguna rutina
+  const rutinas = await db.rutinas.toArray();
+  const enRutina = rutinas.some((r) =>
+    r.ejercicios.some((ej) => ej.ejercicioId === id)
+  );
+
+  // Comprobar si el ejercicio se usa en algún log de entrenamiento
+  const logs = await db.logsEntrenamientos.toArray();
+  const enLog = logs.some((l) =>
+    l.ejercicios.some((ej) => ej.ejercicioId === id)
+  );
+
+  if (enRutina || enLog) {
+    // Soft delete: archivar
+    await db.ejercicios.update(id, { isArchived: true });
+    return "archivado";
+  }
+
+  // Hard delete: borrar físicamente
+  await db.ejercicios.delete(id);
+  return "borrado";
+}
+
+export async function desarchivarEjercicio(id: string): Promise<void> {
+  await db.ejercicios.update(id, { isArchived: false });
+}
+
+export async function editarEjercicio(
+  id: string,
+  cambios: {
+    nombre?: string;
+    grupoMuscular?: GrupoMuscular;
+    descripcion?: string;
+    tipo?: TipoEjercicio;
+  }
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await db.ejercicios.update(id, cambios as any);
 }
 
 /** Construye un EjercicioEnRutina inicial con series por defecto según el tipo. */

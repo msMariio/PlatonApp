@@ -74,7 +74,8 @@ export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = f
   };
 
   const f = filtro.trim().toLowerCase();
-  const filtrados = [...ejercicios]
+  const activos = ejercicios.filter((e) => !e.isArchived);
+  const filtrados = [...activos]
     .filter((e) =>
       f
         ? e.nombre.toLowerCase().includes(f) ||

@@ -78,7 +78,7 @@ export function CarpetaCard({
     id: carpeta.id,
     data: { type: "carpeta" },
   });
-  const safeSetNodeRef = useStableNodeRef(setNodeRef);
+  const safeSetNodeRef = useStableNodeRef(setNodeRef, carpeta.id);
 
   const { setNodeRef: setBodyDropRef } = useDroppable({
     id: `carpeta-body-${carpeta.id}`,
@@ -89,7 +89,7 @@ export function CarpetaCard({
   // recibe null en el cleanup y dnd-kit des-registra el droppable,
   // haciendo la carpeta invisible como drop target (incluida la carpeta
   // vacía). useStableNodeRef ignora el null y siempre registra.
-  const safeBodyDropRef = useStableNodeRef(setBodyDropRef);
+  const safeBodyDropRef = useStableNodeRef(setBodyDropRef, `carpeta-body-${carpeta.id}`);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -307,7 +307,7 @@ function SortableRutinaInter({
     id: rutina.id,
     data: { type: "rutina", containerId },
   });
-  const safeSetNodeRef = useStableNodeRef(setNodeRef);
+  const safeSetNodeRef = useStableNodeRef(setNodeRef, rutina.id);
 
   const style = {
     transform: CSS.Transform.toString(transform),

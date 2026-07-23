@@ -27,6 +27,7 @@ export interface Ejercicio {
   grupoMuscular: GrupoMuscular;
   descripcion?: string;
   tipo: TipoEjercicio;
+  isArchived?: boolean;
 }
 
 export interface Serie {
@@ -63,6 +64,7 @@ export interface Rutina {
   ejercicios: EjercicioEnRutina[];
   order: number;
   createdAt: string;
+  isArchived?: boolean;
 }
 
 export interface SerieReal {
@@ -321,6 +323,38 @@ class GymDatabase extends Dexie {
       })
       .upgrade(async () => {
         // Nueva tabla, sin migración necesaria.
+      });
+
+    // v8: archivado lógico de ejercicios
+    this.version(8)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async () => {
+        // Schema idéntico a v7. isArchived se añade como campo opcional sin migración.
+      });
+
+    // v9: archivado lógico de rutinas
+    this.version(9)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async () => {
+        // Schema idéntico a v8. isArchived se añade como campo opcional en Rutina.
       });
   }
 }

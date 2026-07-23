@@ -11,8 +11,8 @@ import {
   useSensor,
   useSensors,
   closestCorners,
+  useDroppable,
   type DragStartEvent,
-  type DragOverEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -25,6 +25,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type Carpeta, type Rutina } from "../../core/db";
 import { PageHeader } from "../../components/PageHeader";
 import {
+  checkRutinaTieneLogs,
   crearCarpeta,
   crearRutina,
   eliminarCarpeta,
@@ -35,6 +36,7 @@ import {
   ROOT,
   type ContainerId,
 } from "./data";
+import { useStableNodeRef } from "../../hooks/useStableNodeRef";
 import { CarpetaCard } from "./components/CarpetaCard";
 import { SortableRutinaRoot } from "./components/SortableRutinaRoot";
 import { NuevaCarpetaDialog } from "./components/NuevaCarpetaDialog";
@@ -134,7 +136,9 @@ function RutinasListBody({
   onOpenEjercicios,
 }: ListBodyProps) {
   const carpetas = useLiveQuery(() => db.carpetas.toArray(), []) ?? [];
-  const rutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
+  const todasLasRutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
+  // Excluir rutinas archivadas de la vista normal
+  const rutinas = todasLasRutinas.filter((r) => !r.isArchived);
 
   // Normaliza una vista consistente desde IndexedDB. El React Compiler
   // memoiza automáticamente; no necesitamos useMemo aquí.
@@ -150,11 +154,11 @@ function RutinasListBody({
     grupos[k].sort((a, b) => a.order - b.order);
   }
 
-  // Draft durante el drag para que la UI reaccione entre contenedores.
-  const [draft, setDraft] = useState<Record<ContainerId, Rutina[]> | null>(
-    null
-  );
-  const visible = draft ?? grupos;
+  // Los items NUNCA se mueven visualmente entre contenedores durante el
+  // drag — solo el ghost de DragOverlay sigue al cursor. Esto evita
+  // unmounts/remounts de componentes sortable con el mismo id de @dnd-kit
+  // (que causaban corrupción de estado y pantallas en blanco).
+  // Al hacer drop, handleDragEnd persiste directamente desde `grupos`.
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeKind, setActiveKind] = useState<
@@ -173,20 +177,13 @@ function RutinasListBody({
     })
   );
 
-  const findContainerForItem = (itemId: string): ContainerId | null => {
-    if (carpetas.find((c) => c.id === itemId)) return ROOT;
-    for (const k of Object.keys(visible) as ContainerId[]) {
-      if (visible[k].find((r) => r.id === itemId)) return k;
-    }
-    return null;
-  };
-
   /**
    * Resuelve el containerId destino a partir del "over":
    *  · Prioriza `containerId` del data prop (rutinas dentro de carpetas,
-   *    body de CarpetaCard vía `useDroppable`). Evita que "carpeta-body-{id}"
-   *    termine como ContainerId.
-   *  · Header de CarpetaCard (useSortable sin containerId) → su propio id.
+   *    body de CarpetaCard vía `useDroppable`).
+   *  · Header de CarpetaCard (useSortable sin containerId) → ROOT (para
+   *    que el sort intra-root no se convierta accidentalmente en
+   *    cross-container).
    *  · id "ROOT" → ROOT.
    */
   const resolveOverContainer = (
@@ -195,7 +192,13 @@ function RutinasListBody({
     overContainerData: ContainerId | undefined
   ): ContainerId | null => {
     if (overContainerData) return overContainerData;
-    if (overDataType === "carpeta") return overId as ContainerId;
+    // El header de una carpeta (useSortable sin containerId) NO es un
+    // destino de cross-container para rutinas. Si una rutina pasa sobre
+    // el header de una carpeta durante un sort, queremos mantenerla en
+    // ROOT (mismo contenedor) para que handleDragEnd aplique el reorder
+    // intra-root. El cross-container hacia la carpeta se hace vía el
+    // droppable del body (que SÍ tiene containerId).
+    if (overDataType === "carpeta") return ROOT;
     if (overId === ROOT) return ROOT;
     return null;
   };
@@ -207,63 +210,18 @@ function RutinasListBody({
     setActiveKind(t === "carpeta" ? "carpeta" : "rutina");
   };
 
-  const handleDragOver = (e: DragOverEvent) => {
-    const { active, over } = e;
-    if (!over) return;
-    const activeIdStr = String(active.id);
-    const overIdStr = String(over.id);
-    if (activeIdStr === overIdStr) return;
-    const activeType = active.data.current?.type as string | undefined;
-    if (activeType !== "rutina") return; // carpetas no cruzan
-
-    const source = findContainerForItem(activeIdStr);
-    const overType = over.data.current?.type as string | undefined;
-    const overContainerData = over.data.current?.containerId as
-      | ContainerId
-      | undefined;
-    const overContainer = resolveOverContainer(
-      overType,
-      over.id,
-      overContainerData
-    );
-
-    if (!source || !overContainer || source === overContainer) return;
-
-    setDraft((cur) => {
-      const base = cur
-        ? { ...cur }
-        : {
-            [ROOT]: [...(grupos[ROOT] ?? [])] as Rutina[],
-            ...Object.fromEntries(
-              carpetas.map((c) => [c.id, [...(grupos[c.id] ?? [])]])
-            ),
-          };
-      const sourceList = [...(base[source] ?? [])];
-      const targetList = [...(base[overContainer] ?? [])];
-      const aIdx = sourceList.findIndex((r) => r.id === activeIdStr);
-      if (aIdx === -1) return cur;
-      const [moved] = sourceList.splice(aIdx, 1);
-      const oIdx = targetList.findIndex((r) => r.id === overIdStr);
-      const insertAt = oIdx >= 0 ? oIdx : targetList.length;
-      targetList.splice(insertAt, 0, moved);
-      base[source] = sourceList;
-      base[overContainer] = targetList;
-      return base;
-    });
-  };
+  // No hay handleDragOver: los items no se mueven visualmente entre
+  // contenedores durante el drag. Solo el ghost de DragOverlay sigue
+  // al cursor. handleDragEnd persiste los cambios al hacer drop.
 
   const handleDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e;
     setActiveId(null);
     setActiveKind(null);
-    if (!over) {
-      setDraft(null);
-      return;
-    }
+    if (!over) return;
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
     const activeType = active.data.current?.type as string | undefined;
-    const finalMap = draft ?? grupos;
 
     // Carpeta: reorder dentro de ROOT
     if (activeType === "carpeta") {
@@ -272,7 +230,6 @@ function RutinasListBody({
       if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
         await persistCarpetasOrder(arrayMove(carpetasOrd, oldIdx, newIdx));
       }
-      setDraft(null);
       return;
     }
 
@@ -285,89 +242,72 @@ function RutinasListBody({
       over.id,
       overContainerData
     );
-    if (!overContainer) {
-      setDraft(null);
-      return;
-    }
+    if (!overContainer) return;
 
-    // CRÍTICO: el contenedor ORIGINARIO (pre-draft) del item activo, no el
-    // de visible. Si lo buscásemos en visible, después de que draft movió el
-    // item a la carpeta destino detectaríamos source == overContainer y el
-    // branch same-container fallaría (oi = findIndex sobre el id de carpeta
-    // → -1) sin persistir nada. Esto era el bug del drop en carpeta vacía.
+    // Contenedor originario del item activo (siempre desde grupos reales).
     const originalContainer = (Object.keys(grupos) as ContainerId[]).find((k) =>
       (grupos[k] ?? []).some((r) => r.id === activeIdStr)
     );
-    if (!originalContainer) {
-      setDraft(null);
-      return;
-    }
+    if (!originalContainer) return;
 
     if (originalContainer === overContainer) {
-      // Reorder intra-contenedor (intra-carpeta o intra-root). El caso
-      // active === over ya cae en oi === ai ⇒ no se persiste y el
-      // setDraft(null) del final limpia el estado.
-      const list = finalMap[overContainer] ?? [];
+      // Reorder intra-contenedor (intra-carpeta o intra-root).
+      const list = grupos[overContainer] ?? [];
       const oi = list.findIndex((r) => r.id === overIdStr);
       const ai = list.findIndex((r) => r.id === activeIdStr);
       if (oi >= 0 && ai >= 0 && oi !== ai) {
         await persistRutinasMap({
-          ...finalMap,
+          ...grupos,
           [overContainer]: arrayMove(list, ai, oi),
         });
       }
-      setDraft(null);
       return;
     }
 
-    // CROSS-CONTAINER: insertar el item activo en overContainer y quitarlo
-    // del resto del mapa. Persistimos el mapa completo (con restantes sin el
-    // item), sin importar si draft lo había movido o no.
+    // CROSS-CONTAINER: mover item de originalContainer a overContainer.
     const carpetaId =
       overContainer === ROOT ? undefined : (overContainer as string);
-    const targetList = finalMap[overContainer] ?? [];
+    const targetList = grupos[overContainer] ?? [];
     const originalItem = (grupos[originalContainer] ?? []).find(
       (r) => r.id === activeIdStr
     );
-    if (!originalItem) {
-      setDraft(null);
-      return;
-    }
+    if (!originalItem) return;
 
-    let newTargetList: Rutina[];
-    if (targetList.some((r) => r.id === activeIdStr)) {
-      // handleDragOver ya puso el item en target; sólo actualizamos carpetaId.
-      newTargetList = targetList.map((r) =>
-        r.id === activeIdStr ? { ...r, carpetaId } : r
-      );
-    } else {
-      const oIdx = targetList.findIndex((r) => r.id === overIdStr);
-      const insertAt = oIdx >= 0 ? oIdx + 1 : targetList.length;
-      newTargetList = [
-        ...targetList.slice(0, insertAt),
-        { ...originalItem, carpetaId },
-        ...targetList.slice(insertAt),
-      ];
-    }
+    // Insertar en la posición correcta dentro del contenedor destino.
+    // Si el drop fue sobre el header de una carpeta (overType === "carpeta"),
+    // no hay una rutina de referencia en targetList. Insertamos al principio
+    // de ROOT para que la rutina sea visible. Tradeoff: si el usuario suelta
+    // sobre el header de la misma carpeta de origen, la rutina también va a
+    // ROOT en vez de quedarse en la carpeta.
+    const oIdx = targetList.findIndex((r) => r.id === overIdStr);
+    const insertAt =
+      overType === "carpeta"
+        ? 0
+        : oIdx >= 0
+          ? oIdx + 1
+          : targetList.length;
+    const newTargetList = [
+      ...targetList.slice(0, insertAt),
+      { ...originalItem, carpetaId },
+      ...targetList.slice(insertAt),
+    ];
 
     const mapToPersist: Record<ContainerId, Rutina[]> = {};
-    for (const k of Object.keys(finalMap) as ContainerId[]) {
+    for (const k of Object.keys(grupos) as ContainerId[]) {
       if (k === overContainer) {
         mapToPersist[k] = newTargetList;
       } else {
-        mapToPersist[k] = (finalMap[k] ?? []).filter(
+        mapToPersist[k] = (grupos[k] ?? []).filter(
           (r) => r.id !== activeIdStr
         );
       }
     }
     await persistRutinasMap(mapToPersist);
-    setDraft(null);
   };
 
   const handleDragCancel = () => {
     setActiveId(null);
     setActiveKind(null);
-    setDraft(null);
   };
 
   // Ghost en DragOverlay (React Compiler memoiza automáticamente)
@@ -379,15 +319,23 @@ function RutinasListBody({
   const ghostRutina =
     !activeId || activeKind !== "rutina"
       ? null
-      : (visible[ROOT]?.find((x) => x.id === activeId) ??
+      : (grupos[ROOT]?.find((x) => x.id === activeId) ??
         carpetasOrd
-          .flatMap((c) => visible[c.id] ?? [])
+          .flatMap((c) => grupos[c.id] ?? [])
           .find((x) => x.id === activeId) ??
         null);
 
-  const rootRutinas = visible[ROOT] ?? [];
+  const rootRutinas = grupos[ROOT] ?? [];
 
-  // SortableContext raíz incluye sólo carpetas + rutinas en root. Las rutinas
+  // Droppable sobre el area ROOT. Permite soltar una rutina desde una
+  // carpeta directamente en la raiz sin necesidad de apuntar a otra rutina.
+  const { setNodeRef: setRootDropRef } = useDroppable({
+    id: ROOT,
+    data: { type: "root" },
+  });
+  const safeRootDropRef = useStableNodeRef(setRootDropRef, ROOT);
+
+  // SortableContext raiz incluye solo carpetas + rutinas en root. Las rutinas
   // dentro de carpetas viven en el SortableContext anidado de cada CarpetaCard.
   const rootSortableItems = [
     ...carpetasOrd.map((c) => c.id),
@@ -441,7 +389,6 @@ function RutinasListBody({
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
@@ -449,12 +396,20 @@ function RutinasListBody({
           items={rootSortableItems}
           strategy={verticalListSortingStrategy}
         >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box
+            ref={safeRootDropRef}
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              pb: activeId ? 4 : 0,
+            }}
+          >
             {carpetasOrd.map((carpeta) => (
               <CarpetaCard
                 key={carpeta.id}
                 carpeta={carpeta}
-                rutinas={visible[carpeta.id] ?? []}
+                rutinas={grupos[carpeta.id] ?? []}
                 activeId={activeId}
                 onAddRutina={() => setNuevaRutinaTarget(carpeta.id)}
                 onEliminarCarpeta={async () => {
@@ -475,9 +430,12 @@ function RutinasListBody({
                 }}
                 onToggleCollapsed={() => toggleCarpetaCollapsed(carpeta.id)}
                 onEliminarRutina={async (id) => {
-                  if (window.confirm("¿Eliminar esta rutina?")) {
-                    await eliminarRutina(id);
-                  }
+                  const enUso = await checkRutinaTieneLogs(id);
+                  const mensaje = enUso
+                    ? "Esta rutina tiene entrenamientos registrados. No se puede eliminar físicamente.\n\nSe archivará para ocultarla de la lista sin perder tu historial. ¿Continuar?"
+                    : "¿Eliminar esta rutina permanentemente?\n\nEsta acción no se puede deshacer.";
+                  if (!window.confirm(mensaje)) return;
+                  await eliminarRutina(id);
                 }}
                 onMoveUp={async () => {
                   const idx = carpetasOrd.findIndex((c) => c.id === carpeta.id);
@@ -500,23 +458,34 @@ function RutinasListBody({
             ))}
 
             {rootRutinas.length === 0 && carpetasOrd.length === 0 ? (
-              <EmptyStateCard height={140}>
-                [ SIN RUTINAS // TOCA EL BOTÓN + PARA CREAR LA PRIMERA ]
-              </EmptyStateCard>
+              <Box
+                sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
+              >
+                <EmptyStateCard height={140}>
+                  [ SIN RUTINAS // TOCA EL BOTÓN + PARA CREAR LA PRIMERA ]
+                </EmptyStateCard>
+              </Box>
             ) : (
-              rootRutinas.map((r) => (
-                <SortableRutinaRoot
-                  key={r.id}
-                  rutina={r}
-                  activeId={activeId}
-                  onEliminar={async () => {
-                    if (window.confirm("¿Eliminar esta rutina?")) {
+              <Box
+                sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
+              >
+                {rootRutinas.map((r) => (
+                  <SortableRutinaRoot
+                    key={r.id}
+                    rutina={r}
+                    activeId={activeId}
+                    onEliminar={async () => {
+                      const enUso = await checkRutinaTieneLogs(r.id);
+                      const mensaje = enUso
+                        ? "Esta rutina tiene entrenamientos registrados. No se puede eliminar físicamente.\n\nSe archivará para ocultarla de la lista sin perder tu historial. ¿Continuar?"
+                        : "¿Eliminar esta rutina permanentemente?\n\nEsta acción no se puede deshacer.";
+                      if (!window.confirm(mensaje)) return;
                       await eliminarRutina(r.id);
-                    }
-                  }}
-                  onOpen={() => onOpenRutina(r.id)}
-                />
-              ))
+                    }}
+                    onOpen={() => onOpenRutina(r.id)}
+                  />
+                ))}
+              </Box>
             )}
           </Box>
         </SortableContext>
@@ -526,7 +495,7 @@ function RutinasListBody({
             <Box sx={{ opacity: 0.95 }}>
               <CarpetaGhost
                 carpeta={ghostCarpeta}
-                rutinas={visible[ghostCarpeta.id] ?? []}
+                rutinas={grupos[ghostCarpeta.id] ?? []}
               />
             </Box>
           ) : null}

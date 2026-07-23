@@ -72,7 +72,9 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
   const diaSemana = getDiaSemanaDesdeFecha(hoy);
 
   const plan = useLiveQuery(() => getPlanificacionDefault(), []);
-  const rutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
+  const todasLasRutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
+  // Excluir rutinas archivadas del selector de planificación y del diálogo libre
+  const rutinas = todasLasRutinas.filter((r) => !r.isArchived);
   const ejerciciosCatalogo =
     useLiveQuery(() => db.ejercicios.toArray(), []) ?? [];
   const logsHoy = useLiveQuery(() => getLogsDeHoy(), []) ?? [];
@@ -128,7 +130,9 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
   const getNombreRutina = (rutinaId: string | null) => {
     if (!rutinaId) return "DÍA DE DESCANSO";
     if (rutinaId === "custom-libre") return "ENTRENAMIENTO LIBRE";
-    const rutina = rutinas.find((r) => r.id === rutinaId);
+    // Buscar en TODAS las rutinas (incluidas archivadas) para que los logs
+    // históricos que referencian rutinas archivadas sigan mostrando el nombre.
+    const rutina = todasLasRutinas.find((r) => r.id === rutinaId);
     return rutina?.nombre.toUpperCase() ?? "RUTINA DESCONOCIDA";
   };
 

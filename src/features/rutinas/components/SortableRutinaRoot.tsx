@@ -33,7 +33,7 @@ export function SortableRutinaRoot({
     id: rutina.id,
     data: { type: "rutina", containerId: ROOT },
   });
-  const safeSetNodeRef = useStableNodeRef(setNodeRef);
+  const safeSetNodeRef = useStableNodeRef(setNodeRef, rutina.id);
 
   const style = {
     transform: CSS.Transform.toString(transform),

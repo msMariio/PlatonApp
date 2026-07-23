@@ -89,7 +89,7 @@ async function resolveRutina(
   }
   if (rutinaNombre) {
     const porNombre = await db.rutinas
-      .filter((r) => r.nombre.toLowerCase() === rutinaNombre!.toLowerCase())
+      .filter((r) => r.nombre.toLowerCase() === rutinaNombre!.toLowerCase() && !r.isArchived)
       .first();
     if (porNombre) return porNombre.id;
   }
@@ -365,7 +365,21 @@ async function ejecutarReordenarRutina(
   };
 }
 
-async function ejecutarCrearEjercicio(args: CrearEjercicioArgs): Promise<{ id: string; nombre: string; grupoMuscular: string }> {
+async function ejecutarCrearEjercicio(args: CrearEjercicioArgs): Promise<{ id: string; nombre: string; grupoMuscular: string; creado: boolean }> {
+  // Buscar duplicado por nombre (case-insensitive) antes de crear
+  const existente = await db.ejercicios
+    .filter((e) => e.nombre.toLowerCase() === args.nombre.toLowerCase())
+    .first();
+
+  if (existente) {
+    return {
+      id: existente.id,
+      nombre: existente.nombre,
+      grupoMuscular: existente.grupoMuscular,
+      creado: false,
+    };
+  }
+
   const id = uid();
   await db.ejercicios.add({
     id,
@@ -374,7 +388,7 @@ async function ejecutarCrearEjercicio(args: CrearEjercicioArgs): Promise<{ id: s
     descripcion: args.descripcion,
     tipo: args.tipo ?? "fuerza",
   });
-  return { id, nombre: args.nombre, grupoMuscular: args.grupoMuscular };
+  return { id, nombre: args.nombre, grupoMuscular: args.grupoMuscular, creado: true };
 }
 
 async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
@@ -831,9 +845,12 @@ export async function executeFunctionCall(
       }
       case "crear_ejercicio": {
         const result = await ejecutarCrearEjercicio(call.args);
+        const msg = result.creado
+          ? `Ejercicio "${result.nombre}" (${result.grupoMuscular}) añadido al catálogo.`
+          : `El ejercicio "${result.nombre}" (${result.grupoMuscular}) ya existía en el catálogo — no se ha creado un duplicado.`;
         return {
           success: true,
-          message: `Ejercicio "${result.nombre}" (${result.grupoMuscular}) añadido al catálogo.`,
+          message: msg,
           data: result as unknown as Record<string, unknown>,
         };
       }
