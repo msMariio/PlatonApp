@@ -72,7 +72,7 @@ export function useE1RM(ejercicioId: string | null): E1RMData {
 
   // Delta 30 días: comparar el último valor con el máximo de hace 30 días
   let delta30dias: number | null = null;
-  if (puntos.length > 0) {
+  if (actual !== null) {
     const hace30Dias = new Date();
     hace30Dias.setDate(hace30Dias.getDate() - 30);
 

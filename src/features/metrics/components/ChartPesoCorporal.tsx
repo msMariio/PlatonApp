@@ -215,7 +215,7 @@ export function ChartPesoCorporal({
           flexWrap: "wrap",
         }}
       >
-        <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
           <SectionLabel sx={{ mb: 0 }}>TENDENCIA</SectionLabel>
 
           {!isEmpty && velocity !== null && (

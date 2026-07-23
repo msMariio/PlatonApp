@@ -134,7 +134,7 @@ export function MetricsHub() {
 
   const activeEjercicio = useLiveQuery(
     () =>
-      activeEjercicioId ? db.ejercicios.get(activeEjercicioId) : null,
+      activeEjercicioId ? db.ejercicios.get(activeEjercicioId) : undefined,
     [activeEjercicioId]
   );
 
@@ -193,7 +193,7 @@ export function MetricsHub() {
         }}
       >
         <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: "center" }}>
             <FitnessCenterIcon color="primary" fontSize="small" />
             <SectionLabel sx={{ mb: 0 }}>
               [ RENDIMIENTO DE FUERZA ]
@@ -273,10 +273,12 @@ export function MetricsHub() {
                 <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
                   <Stack
                     direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    flexWrap="wrap"
-                    gap={2}
+                    sx={{
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 2,
+                    }}
                   >
                     <Box>
                       <Typography
@@ -410,7 +412,7 @@ export function MetricsHub() {
                 },
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <MonitorWeightIcon color="warning" fontSize="small" />
                 <SectionLabel sx={{ mb: 0 }}>
                   [ PESO CORPORAL ]
