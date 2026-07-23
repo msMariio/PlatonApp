@@ -4,8 +4,8 @@ import { ColorModeProvider } from "./core/ColorModeContext";
 import { AppThemeProvider } from "./core/theme";
 import { HomeView } from "./features/home/HomeView";
 import { TrainingLoggerView } from "./features/training-logger/TrainingLoggerView";
-import { SeguimientoPeso } from "./features/peso-tracker/SeguimientoPeso";
 import { RutinasView } from "./features/rutinas/RutinasView";
+import { MetricsHub } from "./features/metrics/MetricsHub";
 import { CoachView } from "./features/coach-ia/CoachView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { AppFooter } from "./components/AppFooter";
@@ -83,9 +83,9 @@ function renderScreen(
     case 0:
       return <HomeView onStartTraining={onStartTraining} />;
     case 1:
-      return <SeguimientoPeso />;
-    case 2:
       return <RutinasView />;
+    case 2:
+      return <MetricsHub />;
     case 3:
       return <CoachView />;
     case 4:
