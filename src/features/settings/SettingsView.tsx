@@ -224,7 +224,7 @@ export function SettingsView() {
           setConfirmDialogOpen(false);
           setPendingBackup(null);
         }}
-        PaperProps={{ sx: { borderRadius: 0, border: 2, borderColor: "warning.main" } }}
+        slotProps={{ paper: { sx: { borderRadius: 0, border: 2, borderColor: "warning.main" } } }}
       >
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <WarningAmberIcon color="warning" />

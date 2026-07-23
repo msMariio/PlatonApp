@@ -1,4 +1,14 @@
 import { db } from "./db";
+import type {
+  Ejercicio,
+  Carpeta,
+  Rutina,
+  LogEntrenamiento,
+  PesoDiario,
+  PlanificacionSemanal,
+  PerfilUsuario,
+  SesionChat,
+} from "./db";
 
 const APP_NAME = "Platón";
 const BACKUP_VERSION = 1;
@@ -8,14 +18,14 @@ export interface BackupData {
   version: number;
   exportedAt: string;
   data: {
-    ejercicios: unknown[];
-    carpetas: unknown[];
-    rutinas: unknown[];
-    logsEntrenamientos: unknown[];
-    pesos: unknown[];
-    planificacionSemanal: unknown[];
-    perfil_usuario: unknown[];
-    sesiones_chat: unknown[];
+    ejercicios: Ejercicio[];
+    carpetas: Carpeta[];
+    rutinas: Rutina[];
+    logsEntrenamientos: LogEntrenamiento[];
+    pesos: PesoDiario[];
+    planificacionSemanal: PlanificacionSemanal[];
+    perfil_usuario: PerfilUsuario[];
+    sesiones_chat: SesionChat[];
   };
 }
 
@@ -123,7 +133,7 @@ function validateBackupJson(json: unknown): BackupData {
     }
   }
 
-  return obj as BackupData;
+  return obj as unknown as BackupData;
 }
 
 /**
