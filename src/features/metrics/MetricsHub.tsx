@@ -39,6 +39,7 @@ import {
   useEjerciciosConLogs,
   MAIN_LIFT_KEYWORDS,
 } from "./useE1RM";
+import { useFuerzaRelativa } from "./useFuerzaRelativa";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -149,6 +150,24 @@ export function MetricsHub() {
       e1rmYMax: Math.ceil(maxV + maxV * 0.1),
     };
   }, [puntos]);
+
+  // ─── Fuerza Relativa state ────────────────────────────────
+  const {
+    puntos: frPuntos,
+    actual: frActual,
+    delta30dias: frDelta,
+  } = useFuerzaRelativa(activeEjercicioId);
+
+  const { frYMin, frYMax } = useMemo(() => {
+    if (frPuntos.length === 0) return { frYMin: 0, frYMax: 3 };
+    const minV = Math.min(...frPuntos.map((p) => p.ratio));
+    const maxV = Math.max(...frPuntos.map((p) => p.ratio));
+    const pad = Math.max((maxV - minV) * 0.15, 0.1);
+    return {
+      frYMin: Math.max(0, Math.floor((minV - pad) * 100) / 100),
+      frYMax: Math.ceil((maxV + pad) * 100) / 100,
+    };
+  }, [frPuntos]);
 
   // ─── Handlers Peso ────────────────────────────────────────
   const handleGuardarPeso = async (e: React.FormEvent) => {
@@ -377,6 +396,155 @@ export function MetricsHub() {
                   emptyMessage="[ SIN DATOS ]"
                 />
               )}
+
+              {/* ─── FUERZA RELATIVA ───────────────────────────── */}
+              <Box
+                sx={{
+                  mt: 3,
+                  pt: 3,
+                  borderTop: 1,
+                  borderColor: "divider",
+                }}
+              >
+                <SectionLabel sx={{ mb: 2 }}>
+                  [ FUERZA RELATIVA — e1RM / PESO CORPORAL ]
+                </SectionLabel>
+
+                {frPuntos.length === 0 ? (
+                  <EmptyStateCard height={120}>
+                    [ SIN DATOS // REGISTRA PESO CORPORAL Y COMPLETA ENTRENAMIENTOS ]
+                  </EmptyStateCard>
+                ) : (
+                  <>
+                    {/* FR KPI Card */}
+                    <Card
+                      variant="outlined"
+                      sx={{
+                        mb: 2,
+                        borderRadius: 0,
+                        bgcolor: "background.default",
+                        borderColor: "info.main",
+                      }}
+                    >
+                      <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
+                        <Stack
+                          direction="row"
+                          sx={{
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            flexWrap: "wrap",
+                            gap: 2,
+                          }}
+                        >
+                          <Box>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ letterSpacing: "0.05em" }}
+                            >
+                              RATIO ACTUAL — {activeEjercicio?.nombre.toUpperCase()}
+                            </Typography>
+                            <Typography
+                              variant="h4"
+                              sx={{
+                                fontWeight: 700,
+                                fontFamily: "monospace",
+                                letterSpacing: "0.02em",
+                                color: "info.main",
+                              }}
+                            >
+                              {frActual !== null
+                                ? `${frActual.toFixed(2)}× BW`
+                                : "—"}
+                            </Typography>
+                            {frPuntos.length > 0 && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", mt: 0.5 }}
+                              >
+                                {frPuntos[frPuntos.length - 1].e1rm.toFixed(1)} KG
+                                {" / "}
+                                {frPuntos[frPuntos.length - 1].peso.toFixed(1)} KG
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {frDelta !== null && frDelta !== 0 && (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1,
+                                px: 2,
+                                py: 1,
+                                border: 1,
+                                borderColor:
+                                  frDelta > 0 ? "success.main" : "error.main",
+                                bgcolor:
+                                  frDelta > 0
+                                    ? "rgba(76, 175, 80, 0.08)"
+                                    : "rgba(244, 67, 54, 0.08)",
+                              }}
+                            >
+                              {frDelta > 0 ? (
+                                <TrendingUpIcon
+                                  fontSize="small"
+                                  color="success"
+                                />
+                              ) : (
+                                <TrendingDownIcon
+                                  fontSize="small"
+                                  color="error"
+                                />
+                              )}
+                              <Box>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: "block", lineHeight: 1 }}
+                                >
+                                  30 DÍAS
+                                </Typography>
+                                <Typography
+                                  variant="body1"
+                                  sx={{
+                                    fontWeight: "bold",
+                                    fontFamily: "monospace",
+                                    color:
+                                      frDelta > 0
+                                        ? "success.main"
+                                        : "error.main",
+                                  }}
+                                >
+                                  {frDelta > 0 ? "+" : ""}
+                                  {frDelta.toFixed(2)}×
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+
+                    {/* FR Chart */}
+                    <ChartCard
+                      title="PROGRESIÓN FUERZA RELATIVA"
+                      xData={frPuntos.map((p) => p.fecha)}
+                      yData={frPuntos.map((p) => p.ratio)}
+                      seriesLabel="Ratio (× BW)"
+                      color={theme.palette.info.main}
+                      yMin={frYMin}
+                      yMax={frYMax}
+                      xValueFormatter={formatXAxis}
+                      xTickMinStep={DAY_IN_MS}
+                      xTickMaxStep={DAY_IN_MS}
+                      chartType="line"
+                      emptyMessage="[ SIN DATOS ]"
+                    />
+                  </>
+                )}
+              </Box>
             </>
           )}
         </CardContent>
