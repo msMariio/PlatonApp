@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Box,
   Button,
@@ -41,7 +41,8 @@ import {
   type TipoEjercicio,
 } from "../../core/db";
 import {
-  getPlanificacionDefault,
+  readPlanificacionDefault,
+  ensurePlanificacionDefault,
   getDiaSemanaDesdeFecha,
   setRutinaDelDia,
   getLogsDeHoy,
@@ -71,7 +72,16 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
   const [hoy] = useState(() => new Date());
   const diaSemana = getDiaSemanaDesdeFecha(hoy);
 
-  const plan = useLiveQuery(() => getPlanificacionDefault(), []);
+  const plan = useLiveQuery(() => readPlanificacionDefault(), []);
+  // Seed del plan por defecto en un useEffect separado: nunca dentro del
+  // observer de useLiveQuery, para no disparar la re-suscripción y causar
+  // excepciones en el doble-render de StrictMode.
+  useEffect(() => {
+    ensurePlanificacionDefault().catch(() => {
+      // Best-effort: si falla el seed aquí, los handlers de mutación
+      // (setRutinaDelDia, toggleDiaActivo) lo intentarán de nuevo.
+    });
+  }, []);
   const todasLasRutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
   // Excluir rutinas archivadas del selector de planificación y del diálogo libre
   const rutinas = todasLasRutinas.filter((r) => !r.isArchived);
