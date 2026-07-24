@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate", // Actualiza la app automáticamente cuando subas cambios
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+      includeAssets: ["apple-touch-icon.png"],
       manifest: {
         name: "Gym Tracker System",
         short_name: "Tracker",
@@ -20,13 +20,8 @@ export default defineConfig({
         orientation: "portrait",
         icons: [
           {
-            src: "pwa-192x192.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "pwa-512x512.png",
-            sizes: "512x512",
+            src: "apple-touch-icon.png",
+            sizes: "180x180",
             type: "image/png",
           },
         ],
