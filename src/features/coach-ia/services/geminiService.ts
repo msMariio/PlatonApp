@@ -249,7 +249,8 @@ async function buildLocalSnapshot(): Promise<string> {
           nombre: ejercicio?.nombre ?? ej.ejercicioId,
           tipo: ejercicio?.tipo ?? "fuerza",
           series: ej.series.map((s) => ({
-            repsObjetivo: s.repsObjetivo,
+            repsMin: s.repsMin,
+            repsMax: s.repsMax,
             pesoObjetivo: s.pesoObjetivo,
             duracionObjetivoMinutos: s.duracionObjetivoMinutos,
             distanciaObjetivoKm: s.distanciaObjetivoKm,

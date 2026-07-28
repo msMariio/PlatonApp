@@ -22,7 +22,7 @@ type Props = {
 function buildDefaultSerie(tipo: TipoEjercicio): Serie {
   if (tipo === "cardio") return { duracionObjetivoMinutos: 30 };
   if (tipo === "tiempo") return { duracionObjetivoMinutos: 60 };
-  return { repsObjetivo: 8 };
+  return { repsMin: 8, repsMax: 8 };
 }
 
 export function EjercicioEnRutinaCard({
@@ -138,17 +138,35 @@ export function EjercicioEnRutinaCard({
     }
 
     // fuerza / calistenia
+    const handleRepsMinChange = (v: number | null) => {
+      const newMin = v ?? 0;
+      const max = s.repsMax ?? 0;
+      // Auto-sync: si Max está vacío o es menor que Min, igualar Max
+      const newMax = max === 0 || max < newMin ? newMin : max;
+      handleSerieChange(idx, { repsMin: newMin, repsMax: newMax });
+    };
+    const handleRepsMaxChange = (v: number | null) => {
+      handleSerieChange(idx, { repsMax: v ?? 0 });
+    };
+
     return (
       <>
         <InputNumber
           size="small"
-          label="REPS"
+          label="MIN"
           min={0}
           step={1}
-          value={s.repsObjetivo ?? 0}
-          onValueChange={(v) =>
-            handleSerieChange(idx, { repsObjetivo: v ?? 0 })
-          }
+          value={s.repsMin ?? 0}
+          onValueChange={handleRepsMinChange}
+          sx={{ flex: 1 }}
+        />
+        <InputNumber
+          size="small"
+          label="MAX"
+          min={0}
+          step={1}
+          value={s.repsMax ?? 0}
+          onValueChange={handleRepsMaxChange}
           sx={{ flex: 1 }}
         />
         <InputNumber

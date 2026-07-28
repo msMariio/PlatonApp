@@ -17,7 +17,8 @@ export interface EjercicioEnRutinaArgs {
   ejercicioId?: string;
   ejercicioNombre?: string;
   series: number;
-  repsObjetivo?: number;
+  repsMin?: number;
+  repsMax?: number;
   pesoObjetivo?: number;
   descansoMinutos?: number;
   duracionObjetivoMinutos?: number;
@@ -283,10 +284,15 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                 description:
                   "Número de series para este ejercicio (ej: 3, 4, 5).",
               },
-              repsObjetivo: {
+              repsMin: {
                 type: "integer",
                 description:
-                  "Repeticiones objetivo por serie (ej: 8, 10, 12). Para ejercicios de fuerza/calistenia.",
+                  "Repeticiones mínimas objetivo (suelo del rango). Para ejercicios de fuerza/calistenia.",
+              },
+              repsMax: {
+                type: "integer",
+                description:
+                  "Repeticiones máximas objetivo (techo del rango). Para ejercicios de fuerza/calistenia.",
               },
               pesoObjetivo: {
                 type: "number",
@@ -434,9 +440,13 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                 type: "integer",
                 description: "Número de series para este ejercicio.",
               },
-              repsObjetivo: {
+              repsMin: {
                 type: "integer",
-                description: "Repeticiones objetivo por serie.",
+                description: "Repeticiones mínimas objetivo (suelo del rango).",
+              },
+              repsMax: {
+                type: "integer",
+                description: "Repeticiones máximas objetivo (techo del rango).",
               },
               pesoObjetivo: {
                 type: "number",

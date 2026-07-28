@@ -55,7 +55,7 @@ export function buildEjerciciosRealesDesdeRutina(
         return {
           // Copiar valores objetivo de la rutina como valores iniciales
           peso: s.pesoObjetivo ?? 0,
-          reps: s.repsObjetivo ?? 0,
+          reps: s.repsMin ?? 0,
           duracionMinutos: s.duracionObjetivoMinutos ?? 0,
           distanciaKm: s.distanciaObjetivoKm ?? 0,
           nivelInclinacion: 0,
@@ -100,7 +100,7 @@ export function getPlaceholderSerie(
   if (serieRutina) {
     return {
       peso: serieRutina.pesoObjetivo ?? 0,
-      reps: serieRutina.repsObjetivo ?? 0,
+      reps: serieRutina.repsMin ?? 0,
     };
   }
 

@@ -153,7 +153,7 @@ function renderArgs(name: string, args: Record<string, unknown>): React.ReactNod
                     {String(ej.ejercicioNombre ?? ej.ejercicioId ?? "?")}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {String(ej.series ?? "?")}x{String(ej.repsObjetivo ?? "?")}
+                    {String(ej.series ?? "?")}x{ej.repsMin === ej.repsMax ? String(ej.repsMin ?? "?") : `${String(ej.repsMin ?? "?")}-${String(ej.repsMax ?? "?")}`}
                   </Typography>
                   {ej.pesoObjetivo != null && (
                     <Typography variant="caption" color="text.secondary">

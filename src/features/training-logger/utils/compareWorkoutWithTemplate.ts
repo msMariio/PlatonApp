@@ -69,7 +69,7 @@ export function compareWorkoutWithTemplate(
       const pesoUp =
         (rSerie.peso ?? 0) > (tSerie.pesoObjetivo ?? 0);
       const repsUp =
-        (rSerie.reps ?? 0) > (tSerie.repsObjetivo ?? 0);
+        (rSerie.reps ?? 0) > (tSerie.repsMax ?? 0);
       const durUp =
         (rSerie.duracionMinutos ?? 0) >
         (tSerie.duracionObjetivoMinutos ?? 0);
@@ -82,7 +82,7 @@ export function compareWorkoutWithTemplate(
           serieIdx: i,
           pesoAnterior: tSerie.pesoObjetivo,
           pesoNuevo: rSerie.peso ?? 0,
-          repsAnterior: tSerie.repsObjetivo,
+          repsAnterior: tSerie.repsMax,
           repsNuevo: rSerie.reps ?? 0,
           duracionAnterior: tSerie.duracionObjetivoMinutos,
           duracionNuevo: rSerie.duracionMinutos ?? 0,
@@ -138,8 +138,10 @@ export async function actualizarTemplateConMejoras(
         ...s,
         pesoObjetivo:
           Math.max(s.pesoObjetivo ?? 0, rSerie.peso ?? 0) || undefined,
-        repsObjetivo:
-          Math.max(s.repsObjetivo ?? 0, rSerie.reps ?? 0) || undefined,
+        repsMin:
+          Math.max(s.repsMin ?? 0, rSerie.reps ?? 0) || undefined,
+        repsMax:
+          Math.max(s.repsMax ?? 0, rSerie.reps ?? 0) || undefined,
         duracionObjetivoMinutos:
           Math.max(
             s.duracionObjetivoMinutos ?? 0,
@@ -157,7 +159,8 @@ export async function actualizarTemplateConMejoras(
     const extras: Serie[] = completadas
       .slice(ejTemplate.series.length)
       .map((rs) => ({
-        repsObjetivo: rs.reps,
+        repsMin: rs.reps,
+        repsMax: rs.reps,
         pesoObjetivo: rs.peso,
         duracionObjetivoMinutos: rs.duracionMinutos,
         distanciaObjetivoKm: rs.distanciaKm,

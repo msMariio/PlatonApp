@@ -31,7 +31,8 @@ export interface Ejercicio {
 }
 
 export interface Serie {
-  repsObjetivo?: number;
+  repsMin?: number;
+  repsMax?: number;
   pesoObjetivo?: number;
   rpeObjetivo?: number;
   notas?: string;
@@ -356,6 +357,37 @@ class GymDatabase extends Dexie {
       .upgrade(async () => {
         // Schema idéntico a v8. isArchived se añade como campo opcional en Rutina.
       });
+
+    // v10: rangos de repeticiones (repsMin / repsMax)
+    this.version(10)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async (tx) => {
+        // Migrar repsObjetivo → repsMin / repsMax en rutinas
+        const rutinasViejas = await tx.table<Rutina>("rutinas").toArray();
+        const rutinasActualizadas = rutinasViejas.map((r) => ({
+          ...r,
+          ejercicios: r.ejercicios.map((ej) => ({
+            ...ej,
+            series: ej.series.map((s) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const serieLegacy = s as any;
+              const reps = serieLegacy.repsObjetivo ?? 8;
+              const { repsObjetivo, ...resto } = serieLegacy;
+              return { ...resto, repsMin: reps, repsMax: reps } as Serie;
+            }),
+          })),
+        }));
+        await tx.table<Rutina>("rutinas").bulkPut(rutinasActualizadas);
+      });
   }
 }
 
@@ -406,7 +438,8 @@ function migrateEjercicioEnRutina(
   const target = String(e.repeticionesTarget ?? "8").replace(/^\d+x/, "");
   const repsPorDefecto = parseInt(target.split("-")[0], 10) || 8;
   const series: Serie[] = Array.from({ length: numSeries }, () => ({
-    repsObjetivo: repsPorDefecto,
+    repsMin: repsPorDefecto,
+    repsMax: repsPorDefecto,
   }));
   return {
     id: e.id ?? uid(),

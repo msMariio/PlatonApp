@@ -234,7 +234,7 @@ export function buildEjercicioInicial(
       return { duracionObjetivoMinutos: 60 };
     }
     // fuerza / calistenia / undefined
-    return { repsObjetivo: 8 };
+    return { repsMin: 8, repsMax: 8 };
   };
   return {
     id: uid(),

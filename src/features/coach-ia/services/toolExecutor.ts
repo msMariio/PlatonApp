@@ -119,7 +119,8 @@ function buildDefaultSerie(ej: EjercicioEnRutinaArgs): Serie {
     return { distanciaObjetivoKm: ej.distanciaObjetivoKm };
   }
   return {
-    repsObjetivo: ej.repsObjetivo ?? 8,
+    repsMin: ej.repsMin ?? 8,
+    repsMax: ej.repsMax ?? ej.repsMin ?? 8,
     pesoObjetivo: ej.pesoObjetivo,
     notas:
       ej.descansoMinutos != null
@@ -534,7 +535,7 @@ async function ejecutarEditarPeso(args: EditarPesoArgs): Promise<{ valor: number
  */
 function serieToSerieReal(s: Serie): SerieReal {
   const real: SerieReal = { completado: true };
-  if (s.repsObjetivo != null) real.reps = s.repsObjetivo;
+  if (s.repsMin != null) real.reps = s.repsMin;
   if (s.pesoObjetivo != null) real.peso = s.pesoObjetivo;
   if (s.rpeObjetivo != null) real.rpe = s.rpeObjetivo;
   if (s.duracionObjetivoMinutos != null) real.duracionMinutos = s.duracionObjetivoMinutos;
