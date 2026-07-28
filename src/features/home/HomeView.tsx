@@ -107,6 +107,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
   const [ejerciciosExpandidos, setEjerciciosExpandidos] = useState<Set<string>>(
     new Set(),
   );
+  const [historialExpandido, setHistorialExpandido] = useState(false);
 
   const catalogoLookup = new Map(
     ejerciciosCatalogo.map((e: Ejercicio) => [e.id, e]),
@@ -887,7 +888,27 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
 
       <Card>
         <CardContent>
-          <SectionLabel sx={{ mb: 2 }}>HISTORIAL RECIENTE</SectionLabel>
+          <Box
+            onClick={() => setHistorialExpandido((p) => !p)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              userSelect: "none",
+              mb: 2,
+              "&:hover": { color: "primary.main" },
+              transition: "color 0.15s",
+            }}
+          >
+            <SectionLabel sx={{ mb: 0 }}>HISTORIAL RECIENTE</SectionLabel>
+            {historialExpandido ? (
+              <KeyboardArrowUpIcon fontSize="small" color="action" />
+            ) : (
+              <KeyboardArrowDownIcon fontSize="small" color="action" />
+            )}
+          </Box>
+          <Collapse in={historialExpandido}>
           {logsRecientes.length === 0 ? (
             <EmptyStateCard height={120}>
               [ NO HAY ENTRENAMIENTOS REGISTRADOS ]
@@ -972,6 +993,7 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
               )})}
             </Stack>
           )}
+          </Collapse>
         </CardContent>
       </Card>
 

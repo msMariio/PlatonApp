@@ -104,7 +104,9 @@ export function CoachView() {
   const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
 
   // Inicializar sesión: esperar a que las sesiones estén cargadas,
-  // luego reutilizar la última si está dentro del umbral, o crear nueva.
+  // Si la última sesión está vacía (sin mensajes), reutilizarla siempre.
+  // Si tiene mensajes y está dentro del umbral de 2h, reutilizarla.
+  // En cualquier otro caso, crear una nueva.
   const initRef = useRef(false);
   useEffect(() => {
     if (initRef.current) return;
@@ -112,6 +114,19 @@ export function CoachView() {
     if (!sesiones) return;
     if (sesiones.length > 0) {
       const ultimaSesion = sesiones[0];
+      // Si la última sesión está vacía, reutilizarla siempre (evita acumular sesiones vacías)
+      if (ultimaSesion.mensajes.length === 0) {
+        initRef.current = true;
+        setSesionActivaId(ultimaSesion.id);
+        // Limpiar otras sesiones vacías sobrantes (fire-and-forget)
+        (async () => {
+          const vacias = sesiones.filter((s) => s.mensajes.length === 0 && s.id !== ultimaSesion.id);
+          for (const s of vacias) {
+            await eliminarSesionChat(s.id!);
+          }
+        })().catch(() => {});
+        return;
+      }
       const haceUmbral = Date.now() - UMBRAL_REUTILIZACION_MS;
       const fechaActualizacion = new Date(ultimaSesion.fechaActualizacion).getTime();
       if (fechaActualizacion > haceUmbral) {

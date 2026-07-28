@@ -13,6 +13,7 @@ import {
   AccordionDetails,
   Autocomplete,
   TextField,
+  Collapse,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -21,6 +22,8 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import MonitorWeightIcon from "@mui/icons-material/MonitorWeight";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { useTheme } from "@mui/material/styles";
 import { useLiveQuery } from "dexie-react-hooks";
 import InputNumber from "../../components/InputNumber";
@@ -106,6 +109,7 @@ export function MetricsHub() {
   const [timeframePeso, setTimeframePeso] = useState<Timeframe>("30D");
   const [editando, setEditando] = useState<PesoDiario | null>(null);
   const [pesoExpanded, setPesoExpanded] = useState(true);
+  const [registrosExpanded, setRegistrosExpanded] = useState(false);
 
   const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
   const pesosFiltrados = filtrarPesos(pesos, timeframePeso);
@@ -673,7 +677,27 @@ export function MetricsHub() {
                 <CardContent
                   sx={{ display: "flex", flexDirection: "column", gap: 1 }}
                 >
-                  <SectionLabel sx={{ mb: 1 }}>REGISTROS</SectionLabel>
+                  <Box
+                    onClick={() => setRegistrosExpanded((p) => !p)}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      mb: 1,
+                      "&:hover": { color: "primary.main" },
+                      transition: "color 0.15s",
+                    }}
+                  >
+                    <SectionLabel sx={{ mb: 0 }}>REGISTROS</SectionLabel>
+                    {registrosExpanded ? (
+                      <KeyboardArrowUpIcon fontSize="small" color="action" />
+                    ) : (
+                      <KeyboardArrowDownIcon fontSize="small" color="action" />
+                    )}
+                  </Box>
+                  <Collapse in={registrosExpanded}>
                   {pesosFiltrados.length === 0 ? (
                     <EmptyStateCard height={80}>
                       [ NO HAY REGISTROS EN ESTE PERIODO ]
@@ -743,6 +767,7 @@ export function MetricsHub() {
                       </Stack>
                     ))
                   )}
+                  </Collapse>
                 </CardContent>
               </Card>
             </AccordionDetails>

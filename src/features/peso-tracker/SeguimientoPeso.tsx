@@ -7,10 +7,13 @@ import {
   Button,
   IconButton,
   Typography,
+  Collapse,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import InputNumber from "../../components/InputNumber";
 import { AppTextField } from "../../components/AppTextField";
 import { PageHeader } from "../../components/PageHeader";
@@ -55,6 +58,7 @@ export function SeguimientoPeso() {
   const [horaInput, setHoraInput] = useState(obtenerHoraActual());
   const [timeframe, setTimeframe] = useState<Timeframe>("7D");
   const [editando, setEditando] = useState<PesoDiario | null>(null);
+  const [logsExpandidos, setLogsExpandidos] = useState(false);
 
   // El array viene ordenado cronológicamente (fecha + hora) ascendente,
   // por lo que el último elemento es el registro más reciente.
@@ -175,7 +179,27 @@ export function SeguimientoPeso() {
 
       <Card>
         <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <SectionLabel sx={{ mb: 1 }}>LOGS</SectionLabel>
+          <Box
+            onClick={() => setLogsExpandidos((p) => !p)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              userSelect: "none",
+              mb: 1,
+              "&:hover": { color: "primary.main" },
+              transition: "color 0.15s",
+            }}
+          >
+            <SectionLabel sx={{ mb: 0 }}>LOGS</SectionLabel>
+            {logsExpandidos ? (
+              <KeyboardArrowUpIcon fontSize="small" color="action" />
+            ) : (
+              <KeyboardArrowDownIcon fontSize="small" color="action" />
+            )}
+          </Box>
+          <Collapse in={logsExpandidos}>
           {pesosFiltrados.length === 0 ? (
             <EmptyStateCard height={80}>
               [ NO HAY REGISTROS EN ESTE PERIODO ]
@@ -242,6 +266,7 @@ export function SeguimientoPeso() {
               </Stack>
             ))
           )}
+          </Collapse>
         </CardContent>
       </Card>
 

@@ -195,7 +195,13 @@ async function buildLocalSnapshot(): Promise<string> {
     }
   }
 
+  // Día de la semana actual en español para que la IA sepa qué día es "hoy"
+  const DIAS_ES = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const fechaHoy = hoy.toISOString().slice(0, 10);
+  const diaSemanaHoy = DIAS_ES[hoy.getDay()];
+
   const snapshot = {
+    FECHA_ACTUAL: `${fechaHoy} (${diaSemanaHoy})`,
     PERFIL: {
       nombre: perfil?.nombre ?? "NO_CONFIGURADO",
       alturaCm: perfil?.alturaCm ?? "NO_CONFIGURADO",
