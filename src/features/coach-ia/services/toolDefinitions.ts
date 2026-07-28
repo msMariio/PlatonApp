@@ -55,6 +55,18 @@ export interface ReordenarRutinaArgs {
   ordenEjercicios: EjercicioAReordenarArgs[];
 }
 
+export interface EjercicioModificarRutinaArgs {
+  ejercicioId?: string;
+  ejercicioNombre?: string;
+  series: number;
+  repsMin?: number;
+  repsMax?: number;
+  pesoObjetivo?: number;
+  descansoMinutos?: number;
+  duracionObjetivoMinutos?: number;
+  distanciaObjetivoKm?: number;
+}
+
 export interface EditarRutinaArgs {
   rutinaId?: string;
   rutinaNombre?: string;
@@ -64,6 +76,8 @@ export interface EditarRutinaArgs {
   ejerciciosAgregar?: EjercicioEnRutinaArgs[];
   /** Ejercicios a quitar de la rutina (se busca por ID o nombre exacto). */
   ejerciciosQuitar?: EjercicioAQuitarArgs[];
+  /** Modificar series de ejercicios YA EXISTENTES en la rutina. Identifica el ejercicio por ID/nombre y especifica el nuevo número de series, reps, peso, etc. REEMPLAZA las series actuales del ejercicio. */
+  ejerciciosModificar?: EjercicioModificarRutinaArgs[];
 }
 
 export interface EditarEjercicioArgs {
@@ -489,6 +503,56 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                 description: "Nombre exacto del ejercicio a quitar.",
               },
             },
+          },
+        },
+        ejerciciosModificar: {
+          type: "array",
+          description:
+            "Modificar las series de ejercicios YA EXISTENTES en la rutina. " +
+            "Identifica cada ejercicio por ID o nombre y especifica el nuevo número de series, reps, peso, etc. " +
+            "REEMPLAZA completamente las series actuales de ese ejercicio con las nuevas especificaciones. " +
+            "ÚSALA SIEMPRE para cambiar series/reps/peso de ejercicios que ya están en la rutina. NUNCA uses ejerciciosAgregar para esto.",
+          items: {
+            type: "object",
+            properties: {
+              ejercicioId: {
+                type: "string",
+                description: "ID del ejercicio a modificar. Si no se conoce, usa ejercicioNombre.",
+              },
+              ejercicioNombre: {
+                type: "string",
+                description: "Nombre exacto del ejercicio a modificar.",
+              },
+              series: {
+                type: "integer",
+                description: "NUEVO número de series para este ejercicio (reemplaza el actual).",
+              },
+              repsMin: {
+                type: "integer",
+                description: "Repeticiones mínimas objetivo para todas las series.",
+              },
+              repsMax: {
+                type: "integer",
+                description: "Repeticiones máximas objetivo para todas las series.",
+              },
+              pesoObjetivo: {
+                type: "number",
+                description: "Peso objetivo en kg para todas las series.",
+              },
+              descansoMinutos: {
+                type: "number",
+                description: "Descanso entre series en minutos.",
+              },
+              duracionObjetivoMinutos: {
+                type: "number",
+                description: "Duración objetivo en minutos (cardio/tiempo).",
+              },
+              distanciaObjetivoKm: {
+                type: "number",
+                description: "Distancia objetivo en km (cardio).",
+              },
+            },
+            required: ["series"],
           },
         },
       },

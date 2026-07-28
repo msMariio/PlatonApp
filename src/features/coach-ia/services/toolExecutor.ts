@@ -172,7 +172,7 @@ async function ejecutarEditarEjercicio(args: EditarEjercicioArgs): Promise<{ id:
 
 async function ejecutarEditarRutina(
   args: EditarRutinaArgs,
-): Promise<{ id: string; nombre: string; ejerciciosAgregados: number; ejerciciosQuitados: number }> {
+): Promise<{ id: string; nombre: string; ejerciciosAgregados: number; ejerciciosQuitados: number; ejerciciosModificados: number }> {
   const encontrada = await resolveRutinaFull(args.rutinaId, args.rutinaNombre);
   if (!encontrada) throw new Error("Rutina no encontrada. Indica el ID o nombre de la rutina a editar.");
 
@@ -184,6 +184,7 @@ async function ejecutarEditarRutina(
   // ── Quitar ejercicios ───────────────────────────────────────────
   let ejercicios = [...encontrada.ejercicios];
   let ejerciciosQuitados = 0;
+  let ejerciciosModificados = 0;
 
   if (args.ejerciciosQuitar && args.ejerciciosQuitar.length > 0) {
     // Resolver IDs de ejercicios a quitar
@@ -203,6 +204,44 @@ async function ejecutarEditarRutina(
     const antesDeFiltrar = ejercicios.length;
     ejercicios = ejercicios.filter((ej) => !idsSet.has(ej.ejercicioId));
     ejerciciosQuitados = antesDeFiltrar - ejercicios.length;
+  }
+
+  // ── Modificar ejercicios existentes ─────────────────────────────
+  if (args.ejerciciosModificar && args.ejerciciosModificar.length > 0) {
+    for (const mod of args.ejerciciosModificar) {
+      if (!mod.series || mod.series <= 0) continue;
+
+      // Resolver el ejercicio a modificar
+      let targetId: string | null = null;
+      if (mod.ejercicioId) targetId = mod.ejercicioId;
+      if (!targetId && mod.ejercicioNombre) {
+        const ejCat = await db.ejercicios
+          .filter((e) => e.nombre.toLowerCase() === mod.ejercicioNombre!.toLowerCase())
+          .first();
+        targetId = ejCat?.id ?? null;
+      }
+      if (!targetId) continue;
+
+      // Encontrar el ejercicio en la rutina
+      const idx = ejercicios.findIndex((ej) => ej.ejercicioId === targetId);
+      if (idx === -1) continue;
+
+      // Reconstruir las series con los nuevos parámetros
+      const nuevosSeries: Serie[] = Array.from({ length: mod.series }, () =>
+        buildDefaultSerie({
+          series: mod.series,
+          repsMin: mod.repsMin,
+          repsMax: mod.repsMax,
+          pesoObjetivo: mod.pesoObjetivo,
+          duracionObjetivoMinutos: mod.duracionObjetivoMinutos,
+          distanciaObjetivoKm: mod.distanciaObjetivoKm,
+          descansoMinutos: mod.descansoMinutos,
+        }),
+      );
+
+      ejercicios[idx] = { ...ejercicios[idx], series: nuevosSeries };
+      ejerciciosModificados++;
+    }
   }
 
   // ── Añadir ejercicios ───────────────────────────────────────────
@@ -247,6 +286,7 @@ async function ejecutarEditarRutina(
     nombre: (args.nombre ?? encontrada.nombre) as string,
     ejerciciosAgregados,
     ejerciciosQuitados,
+    ejerciciosModificados,
   };
 }
 
@@ -897,6 +937,7 @@ export async function executeFunctionCall(
         if (call.args.nombre !== undefined) cambios.push(`renombrada a "${result.nombre}"`);
         if (call.args.descripcion !== undefined) cambios.push("descripción actualizada");
         if (result.ejerciciosQuitados > 0) cambios.push(`${result.ejerciciosQuitados} ejercicios quitados`);
+        if (result.ejerciciosModificados > 0) cambios.push(`${result.ejerciciosModificados} ejercicios modificados`);
         if (result.ejerciciosAgregados > 0) cambios.push(`${result.ejerciciosAgregados} ejercicios añadidos`);
         const detalle = cambios.length > 0 ? ` (${cambios.join(", ")})` : "";
         return {
