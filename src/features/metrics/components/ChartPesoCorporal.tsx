@@ -101,14 +101,16 @@ function filtrarPorTimeframe(diarios: PuntoDiario[], tf: Timeframe): PuntoDiario
 }
 
 /**
- * Calcula la velocidad semanal (kg/semana) mediante regresión lineal
- * sobre los últimos 14 días de tendencia.
+ * Calcula la velocidad semanal (kg/semana) con fallbacks progresivos:
+ * 1. Regresión lineal sobre últimos 14 puntos de tendencia (más preciso)
+ * 2. Tasa simple sobre puntos de tendencia disponibles (span >= 3 días)
+ * 3. Tasa simple sobre promedios diarios crudos (span >= 3 días)
  */
 function calcularVelocidadSemanal(
   diarios: PuntoDiario[],
   trend: (number | null)[]
 ): number | null {
-  // Recoger los últimos 14 puntos con tendencia válida
+  // ── Nivel 1: Regresión lineal sobre últimos 14 puntos de tendencia ──
   const ultimos: { diasDesdePrimero: number; y: number }[] = [];
   for (let i = diarios.length - 1; i >= 0 && ultimos.length < 14; i--) {
     if (trend[i] !== null) {
@@ -118,15 +120,53 @@ function calcularVelocidadSemanal(
       ultimos.unshift({ diasDesdePrimero, y: trend[i]! });
     }
   }
-  if (ultimos.length < 2) return null;
+  if (ultimos.length >= 2) {
+    const puntosLR = ultimos.map((p) => ({ x: p.diasDesdePrimero, y: p.y }));
+    const reg = linearRegression(puntosLR);
+    if (reg) return reg.slope * 7;
+  }
 
-  // Regresión con días reales como x para obtener slope en kg/día
-  const puntosLR = ultimos.map((p) => ({ x: p.diasDesdePrimero, y: p.y }));
-  const reg = linearRegression(puntosLR);
-  if (!reg) return null;
+  // ── Nivel 2: Tasa simple sobre tendencia (primer vs último punto) ──
+  if (ultimos.length >= 2) {
+    const first = ultimos[0];
+    const last = ultimos[ultimos.length - 1];
+    const daysDiff = last.diasDesdePrimero - first.diasDesdePrimero;
+    if (daysDiff >= 3) {
+      return ((last.y - first.y) / daysDiff) * 7;
+    }
+  }
 
-  // slope en kg/día → kg/semana (*7)
-  return reg.slope * 7;
+  // ── Nivel 3: Tasa simple sobre promedios diarios crudos ────────────
+  if (diarios.length >= 2) {
+    const last = diarios[diarios.length - 1];
+
+    // 3a: Buscar un punto ~7 días atrás para una ventana más relevante
+    const targetDate = new Date(last.date);
+    targetDate.setDate(targetDate.getDate() - 7);
+    let bestEarlier: PuntoDiario | null = null;
+    let bestDiff = Infinity;
+    for (let i = diarios.length - 2; i >= 0; i--) {
+      const diff = Math.abs(diarios[i].date.getTime() - targetDate.getTime());
+      if (diff < bestDiff) { bestDiff = diff; bestEarlier = diarios[i]; }
+    }
+    if (bestEarlier) {
+      const daysDiff =
+        (last.date.getTime() - bestEarlier.date.getTime()) / (24 * 60 * 60 * 1000);
+      if (daysDiff >= 3) {
+        return ((last.valor - bestEarlier.valor) / daysDiff) * 7;
+      }
+    }
+
+    // 3b: Último recurso: primer vs último diario de todo el historial
+    const first = diarios[0];
+    const daysDiff =
+      (last.date.getTime() - first.date.getTime()) / (24 * 60 * 60 * 1000);
+    if (daysDiff >= 3) {
+      return ((last.valor - first.valor) / daysDiff) * 7;
+    }
+  }
+
+  return null;
 }
 
 const formatXAxis = (

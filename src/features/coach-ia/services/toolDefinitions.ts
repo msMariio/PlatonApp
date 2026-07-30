@@ -20,6 +20,7 @@ export interface EjercicioEnRutinaArgs {
   repsMin?: number;
   repsMax?: number;
   pesoObjetivo?: number;
+  rpeObjetivo?: number;
   descansoMinutos?: number;
   duracionObjetivoMinutos?: number;
   distanciaObjetivoKm?: number;
@@ -62,6 +63,7 @@ export interface EjercicioModificarRutinaArgs {
   repsMin?: number;
   repsMax?: number;
   pesoObjetivo?: number;
+  rpeObjetivo?: number;
   descansoMinutos?: number;
   duracionObjetivoMinutos?: number;
   distanciaObjetivoKm?: number;
@@ -315,6 +317,11 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                   "ejercicio, sugiere un peso aproximado basado en sus últimos pesos reales. Si no hay historial, " +
                   "estima un peso razonable según el nivel típico para el ejercicio y el objetivo del atleta.",
               },
+              rpeObjetivo: {
+                type: "number",
+                description:
+                  "RPE objetivo para todas las series (escala 1-10). Ej: 7, 8, 9. Opcional.",
+              },
               descansoMinutos: {
                 type: "number",
                 description:
@@ -466,6 +473,11 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                 type: "number",
                 description: "Peso objetivo en kg.",
               },
+              rpeObjetivo: {
+                type: "number",
+                description:
+                  "RPE objetivo para todas las series (escala 1-10). Opcional.",
+              },
               descansoMinutos: {
                 type: "number",
                 description: "Descanso entre series en minutos.",
@@ -538,6 +550,11 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               pesoObjetivo: {
                 type: "number",
                 description: "Peso objetivo en kg para todas las series.",
+              },
+              rpeObjetivo: {
+                type: "number",
+                description:
+                  "RPE objetivo para todas las series (escala 1-10). Opcional.",
               },
               descansoMinutos: {
                 type: "number",

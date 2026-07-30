@@ -18,6 +18,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ErrorIcon from "@mui/icons-material/Error";
 import { useLiveQuery } from "dexie-react-hooks";
 import ReactMarkdown from "react-markdown";
@@ -82,6 +83,7 @@ export function CoachView() {
   const [loading, setLoading] = useState(false);
   const [procesandoPropuesta, setProcesandoPropuesta] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Leer sesiones de forma reactiva (null = aún no cargado)
@@ -475,6 +477,16 @@ export function CoachView() {
       day: "2-digit",
       month: "2-digit",
     });
+  };
+
+  const handleCopiarMensaje = async (texto: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback silencioso si clipboard no está disponible
+    }
   };
 
   /** Componentes personalizados para ReactMarkdown con estética industrial/consola. */
@@ -924,9 +936,10 @@ export function CoachView() {
     }
 
     // Mensaje normal (texto)
+    const msgIdStr = msg.id ?? String(idx);
     return (
       <Box
-        key={msg.id ?? idx}
+        key={msgIdStr}
         sx={{
           display: "flex",
           justifyContent: esUser ? "flex-end" : "",
@@ -946,6 +959,15 @@ export function CoachView() {
             // backgroundColor: esUser ? alpha("#1976d2", 0.05) : undefined,
             bgcolor: esUser ? "background.paper" : undefined,
             p: 1.5,
+            position: "relative",
+            "&:hover .msg-copy-btn": {
+              opacity: 1,
+            },
+            "@media (hover: none)": {
+              "& .msg-copy-btn": {
+                opacity: 0.5,
+              },
+            },
           }}
         >
           <Box
@@ -988,6 +1010,36 @@ export function CoachView() {
               {msg.texto}
             </ReactMarkdown>
           </Box>
+          {/* Botón de copiar */}
+          <IconButton
+            className="msg-copy-btn"
+            size="small"
+            onClick={() => handleCopiarMensaje(msg.texto, msgIdStr)}
+            sx={{
+              position: "absolute",
+              top: 2,
+              right: 2,
+              opacity: 0,
+              transition: "opacity 0.15s",
+              borderRadius: 0,
+              p: 0.25,
+              color: copiedId === msgIdStr ? "primary.main" : "text.secondary",
+              bgcolor: (theme) =>
+                copiedId === msgIdStr
+                  ? alpha(theme.palette.primary.main, 0.12)
+                  : "transparent",
+              "&:hover": {
+                bgcolor: (theme) => alpha(theme.palette.action.hover, 0.6),
+              },
+            }}
+            aria-label={copiedId === msgIdStr ? "Copiado" : "Copiar mensaje"}
+          >
+            {copiedId === msgIdStr ? (
+              <CheckCircleIcon sx={{ fontSize: 14 }} />
+            ) : (
+              <ContentCopyRoundedIcon sx={{ fontSize: 14 }} />
+            )}
+          </IconButton>
         </Box>
       </Box>
     );

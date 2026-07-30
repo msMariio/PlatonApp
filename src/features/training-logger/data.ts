@@ -78,6 +78,7 @@ export function getPlaceholderSerie(
   duracionMinutos?: number;
   distanciaKm?: number;
   nivelInclinacion?: number;
+  rpe?: number;
 } {
   // Prioridad 1: último log de esta rutina para este ejercicio/serie
   const logEj = ultimoLog?.ejercicios.find(
@@ -91,6 +92,7 @@ export function getPlaceholderSerie(
       duracionMinutos: logSerie.duracionMinutos,
       distanciaKm: logSerie.distanciaKm,
       nivelInclinacion: logSerie.nivelInclinacion,
+      rpe: logSerie.rpe,
     };
   }
 
@@ -101,6 +103,7 @@ export function getPlaceholderSerie(
     return {
       peso: serieRutina.pesoObjetivo ?? 0,
       reps: serieRutina.repsMin ?? 0,
+      rpe: serieRutina.rpeObjetivo,
     };
   }
 

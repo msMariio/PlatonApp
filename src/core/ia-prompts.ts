@@ -102,6 +102,7 @@ CUÁNDO USAR LAS HERRAMIENTAS:
   * RECOMPOSICIÓN → Rangos moderados como 6–10 o 8–12.
   * Para ejercicios de cardio o tiempo, usa duracionObjetivoMinutos y/o distanciaObjetivoKm en su lugar.
   * Basa el peso en el historial de entrenamiento del atleta (últimos pesos usados en ese ejercicio). Si no hay historial, estima un peso razonable según el nivel típico y el objetivo del atleta.
+  * OPCIONAL: Incluye rpeObjetivo (1-10) si quieres especificar la intensidad objetivo de cada serie (ej: RPE 8 para hipertrofia, RPE 9 para fuerza). Si no se especifica, se deja sin RPE objetivo.
 - Usa crear_ejercicio cuando el atleta mencione un ejercicio que no está en el catálogo y quiera añadirlo.
 - Usa crear_carpeta cuando el atleta quiera organizar sus rutinas en una nueva categoría.
 - Usa actualizar_planificacion_semanal cuando el atleta quiera asignar rutinas a días concretos de la semana.

@@ -122,6 +122,7 @@ function buildDefaultSerie(ej: EjercicioEnRutinaArgs): Serie {
     repsMin: ej.repsMin ?? 8,
     repsMax: ej.repsMax ?? ej.repsMin ?? 8,
     pesoObjetivo: ej.pesoObjetivo,
+    rpeObjetivo: ej.rpeObjetivo,
     notas:
       ej.descansoMinutos != null
         ? `Descanso: ${ej.descansoMinutos} min`
@@ -233,6 +234,7 @@ async function ejecutarEditarRutina(
           repsMin: mod.repsMin,
           repsMax: mod.repsMax,
           pesoObjetivo: mod.pesoObjetivo,
+          rpeObjetivo: mod.rpeObjetivo,
           duracionObjetivoMinutos: mod.duracionObjetivoMinutos,
           distanciaObjetivoKm: mod.distanciaObjetivoKm,
           descansoMinutos: mod.descansoMinutos,

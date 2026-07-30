@@ -9,6 +9,7 @@ export interface PlaceholderData {
   duracionMinutos?: number;
   distanciaKm?: number;
   nivelInclinacion?: number;
+  rpe?: number;
 }
 
 type Props = {
@@ -77,6 +78,21 @@ export function SerieLoggerRow({
             }
             onValueChange={(v) => onChange({ ...serie, reps: v ?? 0 })}
             sx={{ flex: 1 }}
+          />
+          <InputNumber
+            size="small"
+            label="RPE"
+            min={0}
+            max={10}
+            step={0.5}
+            value={serie.rpe || undefined}
+            placeholder={
+              placeholder.rpe != null && placeholder.rpe > 0
+                ? String(placeholder.rpe)
+                : undefined
+            }
+            onValueChange={(v) => onChange({ ...serie, rpe: v ?? undefined })}
+            sx={{ flex: 0.7, minWidth: 56 }}
           />
         </>
       );
