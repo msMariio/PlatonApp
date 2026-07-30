@@ -180,7 +180,7 @@ function calcularVelocidadSemanal(
     }
   }
   if (ultimos.length >= 2) {
-    const reg = linearRegression(ultimos);
+    const reg = linearRegression(ultimos.map((p) => ({ x: p.diasDesdePrimero, y: p.y })));
     if (reg) return { valor: reg.slope * 7, metodo: "regresion_lineal" };
   }
 
