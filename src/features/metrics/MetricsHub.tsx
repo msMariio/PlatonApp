@@ -14,6 +14,7 @@ import {
   Autocomplete,
   TextField,
   Collapse,
+  Fade,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -111,6 +112,9 @@ export function MetricsHub() {
   const [pesoExpanded, setPesoExpanded] = useState(true);
   const [registrosExpanded, setRegistrosExpanded] = useState(false);
 
+  // ─── Tab navigation: fuerza vs peso ──────────────────────
+  const [tab, setTab] = useState<"fuerza" | "peso">("fuerza");
+
   const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
   const pesosFiltrados = filtrarPesos(pesos, timeframePeso);
 
@@ -202,13 +206,72 @@ export function MetricsHub() {
     setEditando(null);
   };
 
+  // ─── Segmented control (brutalist) ──────────────────────
+  const segmentedControl = (
+    <Box
+      sx={{
+        display: "flex",
+        width: "100%",
+        border: 1,
+        borderColor: "divider",
+      }}
+    >
+      <Button
+        onClick={() => setTab("fuerza")}
+        disableElevation
+        aria-pressed={tab === "fuerza"}
+        sx={{
+          flex: 1,
+          py: 0.75,
+          borderRadius: 0,
+          fontSize: "0.8rem",
+          fontWeight: tab === "fuerza" ? 700 : 400,
+          bgcolor: tab === "fuerza" ? "primary.main" : "transparent",
+          color: tab === "fuerza" ? "primary.contrastText" : "text.secondary",
+          border: "none",
+          transition: "all 0.15s ease",
+          "&:hover": {
+            bgcolor: tab === "fuerza" ? "primary.main" : "action.hover",
+          },
+        }}
+      >
+        FUERZA
+      </Button>
+      <Button
+        onClick={() => setTab("peso")}
+        disableElevation
+        aria-pressed={tab === "peso"}
+        sx={{
+          flex: 1,
+          py: 0.75,
+          borderRadius: 0,
+          fontSize: "0.8rem",
+          fontWeight: tab === "peso" ? 700 : 400,
+          bgcolor: tab === "peso" ? "primary.main" : "transparent",
+          color: tab === "peso" ? "primary.contrastText" : "text.secondary",
+          border: "none",
+          transition: "all 0.15s ease",
+          "&:hover": {
+            bgcolor: tab === "peso" ? "primary.main" : "action.hover",
+          },
+        }}
+      >
+        PESO
+      </Button>
+    </Box>
+  );
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       <PageHeader>MÉTRICAS</PageHeader>
 
+      {segmentedControl}
+
       {/* ═══════════════════════════════════════════════════════════
-          SECCIÓN 1: RENDIMIENTO DE FUERZA
+          TAB: FUERZA
           ═══════════════════════════════════════════════════════════ */}
+      <Fade in={tab === "fuerza"} timeout={200} unmountOnExit>
+        <Box>
       <Card
         sx={{
           borderLeft: 4,
@@ -553,10 +616,14 @@ export function MetricsHub() {
           )}
         </CardContent>
       </Card>
+        </Box>
+      </Fade>
 
       {/* ═══════════════════════════════════════════════════════════
-          SECCIÓN 2: PESO CORPORAL
+          TAB: PESO CORPORAL
           ═══════════════════════════════════════════════════════════ */}
+      <Fade in={tab === "peso"} timeout={200} unmountOnExit>
+        <Box>
       <Card
         sx={{
           borderLeft: 4,
@@ -774,6 +841,8 @@ export function MetricsHub() {
           </Accordion>
         </CardContent>
       </Card>
+        </Box>
+      </Fade>
 
       {/* Edit dialog */}
       {editando !== null && (
