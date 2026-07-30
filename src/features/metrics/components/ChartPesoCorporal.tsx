@@ -46,21 +46,20 @@ function agruparPromedioDiario(pesos: PesoDiario[]): PuntoDiario[] {
 }
 
 /**
- * Calcula la media móvil simple de N días sobre los promedios diarios.
- * Los primeros N-1 días devuelven null (sin historial suficiente).
+ * Calcula la media móvil exponencial (EMA) de N días.
+ * α = 2/(N+1). El primer valor se inicializa con el primer dato.
  */
-function calcularMA(diarios: PuntoDiario[], ventana: number): (number | null)[] {
-  const ma: (number | null)[] = [];
+function calcularEMA(diarios: PuntoDiario[], ventana: number): (number | null)[] {
+  const alpha = 2 / (ventana + 1);
+  const ema: (number | null)[] = [];
   for (let i = 0; i < diarios.length; i++) {
-    if (i < ventana - 1) {
-      ma.push(null);
-      continue;
+    if (i === 0) {
+      ema.push(diarios[i].valor);
+    } else {
+      ema.push(alpha * diarios[i].valor + (1 - alpha) * ema[i - 1]!);
     }
-    const slice = diarios.slice(i - (ventana - 1), i + 1);
-    const avg = slice.reduce((acc, p) => acc + p.valor, 0) / slice.length;
-    ma.push(avg);
   }
-  return ma;
+  return ema;
 }
 
 /**
@@ -89,7 +88,7 @@ function linearRegression(
   return { slope, intercept };
 }
 
-const MA_WINDOW = 7;
+const EMA_WINDOW = 7;
 
 /** Filtra los puntos diarios al rango del timeframe. */
 function filtrarPorTimeframe(diarios: PuntoDiario[], tf: Timeframe): PuntoDiario[] {
@@ -150,15 +149,15 @@ export function ChartPesoCorporal({
   onTimeframeChange,
 }: ChartPesoCorporalProps) {
   const theme = useTheme();
-  const maWindow = MA_WINDOW;
+  const emaWindow = EMA_WINDOW;
 
   // ─── Procesamiento de datos ───────────────────────────────
-  // La MA se calcula con TODOS los datos históricos, luego se filtra
+  // El EMA se calcula con TODOS los datos históricos, luego se filtra
   // por timeframe solo para la visualización en el gráfico.
   const { diarios, trend, velocity, dates, rawValues, trendValues, trendLabel } =
     useMemo(() => {
       const all = agruparPromedioDiario(pesos);
-      const t = calcularMA(all, maWindow);
+      const t = calcularEMA(all, emaWindow);
       const v = calcularVelocidadSemanal(all, t);
 
       // Filtrar para mostrar solo el rango del timeframe
@@ -173,7 +172,7 @@ export function ChartPesoCorporal({
       const rawValues = all.slice(startIdx).map((p) => p.valor);
       const trendValues = t.slice(startIdx);
 
-      const trendLabel = `Tendencia (MA7)`;
+      const trendLabel = `Tendencia (EMA7)`;
 
       return { diarios: d, trend: t, velocity: v, dates, rawValues, trendValues, trendLabel };
     }, [pesos, timeframe]);

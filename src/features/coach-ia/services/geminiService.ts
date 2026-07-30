@@ -1,4 +1,4 @@
-import { db, type MensajeChat, type SesionChat } from "../../../core/db";
+import { db, type MensajeChat, type SesionChat, type LogEntrenamiento, type PesoDiario, type Ejercicio } from "../../../core/db";
 import { SYSTEM_PROMPT_PERFORMANCE_OS } from "../../../core/ia-prompts";
 import { TOOL_DECLARATIONS, type FunctionDeclaration } from "./toolDefinitions";
 
@@ -93,6 +93,297 @@ function partIsFunctionCall(
 
 // ── Snapshot ─────────────────────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════════
+//  HELPERS: EMA-7 y velocidad semanal (peso corporal)
+// ═══════════════════════════════════════════════════════════════════════
+
+interface PuntoDiario {
+  date: Date;
+  valor: number;
+}
+
+/** Agrupa pesajes por fecha y calcula el promedio diario. */
+function agruparPromedioDiario(pesos: PesoDiario[]): PuntoDiario[] {
+  const mapa = new Map<string, number[]>();
+  for (const p of pesos) {
+    const existente = mapa.get(p.fecha) ?? [];
+    existente.push(p.valor);
+    mapa.set(p.fecha, existente);
+  }
+  const resultado: PuntoDiario[] = [];
+  for (const [fecha, valores] of mapa) {
+    const avg = valores.reduce((a, b) => a + b, 0) / valores.length;
+    resultado.push({ date: new Date(`${fecha}T00:00:00`), valor: avg });
+  }
+  resultado.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return resultado;
+}
+
+/** EMA: α = 2/(N+1). Primer valor = seed con el primer dato. */
+function calcularEMA(diarios: PuntoDiario[], ventana: number): (number | null)[] {
+  const alpha = 2 / (ventana + 1);
+  const ema: (number | null)[] = [];
+  for (let i = 0; i < diarios.length; i++) {
+    if (i === 0) {
+      ema.push(diarios[i].valor);
+    } else {
+      ema.push(alpha * diarios[i].valor + (1 - alpha) * ema[i - 1]!);
+    }
+  }
+  return ema;
+}
+
+/** Regresión lineal simple (OLS). */
+function linearRegression(
+  points: { x: number; y: number }[],
+): { slope: number; intercept: number } | null {
+  const n = points.length;
+  if (n < 2) return null;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (const p of points) {
+    sumX += p.x;
+    sumY += p.y;
+    sumXY += p.x * p.y;
+    sumXX += p.x * p.x;
+  }
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator === 0) return null;
+  const slope = (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+
+type MetodoTasa = "regresion_lineal" | "simple_ema" | "simple_raw";
+
+interface ResultadoVelocidad {
+  valor: number;
+  metodo: MetodoTasa;
+}
+
+/**
+ * Calcula la velocidad semanal (kg/sem) con fallbacks progresivos:
+ * 1. Regresión lineal sobre últimos 14 puntos EMA (más preciso)
+ * 2. Tasa simple sobre puntos EMA disponibles (span >= 3 días)
+ * 3. Tasa simple sobre promedios diarios crudos (span >= 3 días)
+ */
+function calcularVelocidadSemanal(
+  diarios: PuntoDiario[],
+  ema: (number | null)[],
+): ResultadoVelocidad | null {
+  // ── Nivel 1: Regresión lineal sobre últimos 14 puntos EMA ─────
+  const ultimos: { diasDesdePrimero: number; y: number }[] = [];
+  for (let i = diarios.length - 1; i >= 0 && ultimos.length < 14; i--) {
+    if (ema[i] !== null) {
+      const diasDesdePrimero =
+        (diarios[i].date.getTime() - diarios[0].date.getTime()) / (24 * 60 * 60 * 1000);
+      ultimos.unshift({ diasDesdePrimero, y: ema[i]! });
+    }
+  }
+  if (ultimos.length >= 2) {
+    const reg = linearRegression(ultimos);
+    if (reg) return { valor: reg.slope * 7, metodo: "regresion_lineal" };
+  }
+
+  // ── Nivel 2: Tasa simple sobre EMA (primer vs último punto) ──
+  if (ultimos.length >= 2) {
+    const first = ultimos[0];
+    const last = ultimos[ultimos.length - 1];
+    const daysDiff = last.diasDesdePrimero - first.diasDesdePrimero;
+    if (daysDiff >= 3) {
+      return {
+        valor: ((last.y - first.y) / daysDiff) * 7,
+        metodo: "simple_ema",
+      };
+    }
+  }
+
+  // ── Nivel 3: Tasa simple sobre promedios diarios crudos ───────
+  if (diarios.length >= 2) {
+    const last = diarios[diarios.length - 1];
+
+    // 3a: Buscar un punto ~7 días atrás para una ventana más relevante
+    const targetDate = new Date(last.date);
+    targetDate.setDate(targetDate.getDate() - 7);
+    let bestEarlier: PuntoDiario | null = null;
+    let bestDiff = Infinity;
+    for (let i = diarios.length - 2; i >= 0; i--) {
+      const diff = Math.abs(diarios[i].date.getTime() - targetDate.getTime());
+      if (diff < bestDiff) { bestDiff = diff; bestEarlier = diarios[i]; }
+    }
+    if (bestEarlier) {
+      const daysDiff =
+        (last.date.getTime() - bestEarlier.date.getTime()) / (24 * 60 * 60 * 1000);
+      if (daysDiff >= 3) {
+        return {
+          valor: ((last.valor - bestEarlier.valor) / daysDiff) * 7,
+          metodo: "simple_raw",
+        };
+      }
+    }
+
+    // 3b: Último recurso: primer vs último diario de todo el historial
+    const first = diarios[0];
+    const daysDiff =
+      (last.date.getTime() - first.date.getTime()) / (24 * 60 * 60 * 1000);
+    if (daysDiff >= 3) {
+      return {
+        valor: ((last.valor - first.valor) / daysDiff) * 7,
+        metodo: "simple_raw",
+      };
+    }
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  HELPERS: e1RM y fuerza relativa
+// ═══════════════════════════════════════════════════════════════════════
+
+const MAIN_LIFT_KEYWORDS = ["banca", "sentadilla", "peso muerto", "press militar"];
+
+/** Fórmula de Brzycki: e1RM = w × (36 / (37 - r)) */
+function brzycki(w: number, r: number): number {
+  if (r <= 0 || r >= 37) return 0;
+  return w * (36 / (37 - r));
+}
+
+/** Mejor e1RM estimado para un ejercicio en un log. */
+function calcularE1RMPorLog(log: LogEntrenamiento, ejercicioId: string): number {
+  const ej = log.ejercicios.find((e) => e.ejercicioId === ejercicioId);
+  if (!ej) return 0;
+  let mejor = 0;
+  for (const s of ej.series) {
+    if (!s.completado) continue;
+    const peso = s.peso ?? 0;
+    const reps = s.reps ?? 0;
+    if (peso <= 0 || reps <= 0) continue;
+    const e = brzycki(peso, reps);
+    if (e > mejor) mejor = e;
+  }
+  return mejor;
+}
+
+/** Encuentra el peso corporal más cercano a una fecha (±3 días). */
+function buscarPesoEnFecha(fecha: Date, pesos: PesoDiario[]): number | null {
+  if (pesos.length === 0) return null;
+  const fechaStr = fecha.toISOString().split("T")[0];
+  const mismoDia = pesos.filter((p) => p.fecha === fechaStr);
+  if (mismoDia.length > 0) {
+    mismoDia.sort((a, b) => b.hora.localeCompare(a.hora));
+    return mismoDia[0].valor;
+  }
+  const fechaTime = fecha.getTime();
+  let mejor: PesoDiario | null = null;
+  let mejorDiff = Infinity;
+  for (const p of pesos) {
+    const diff = Math.abs(new Date(p.fecha).getTime() - fechaTime);
+    if (diff < mejorDiff) { mejorDiff = diff; mejor = p; }
+  }
+  if (mejor && mejorDiff <= 3 * 24 * 60 * 60 * 1000) return mejor.valor;
+  return null;
+}
+
+interface MetricaEjercicio {
+  nombre: string;
+  e1rmActual: number | null;
+  e1rmDelta30dias: number | null;
+  frActual: number | null;
+  frDelta30dias: number | null;
+  ultimoPesoKg: number | null;
+}
+
+/** Calcula métricas de fuerza para los main lifts del atleta. */
+async function calcularMetricasFuerza(
+  ejercicios: Ejercicio[],
+  logs: LogEntrenamiento[],
+  pesos: PesoDiario[],
+): Promise<MetricaEjercicio[]> {
+  const result: MetricaEjercicio[] = [];
+
+  for (const kw of MAIN_LIFT_KEYWORDS) {
+    const ej = ejercicios.find(
+      (e) =>
+        e.nombre.toLowerCase().includes(kw.toLowerCase()) &&
+        !e.isArchived &&
+        (e.tipo === "fuerza" || e.tipo === "calistenia"),
+    );
+    if (!ej) continue;
+
+    // ── e1RM ──────────────────────────────────────────────
+    const puntos: { fecha: Date; e1rm: number }[] = [];
+    for (const log of logs) {
+      const e1rm = calcularE1RMPorLog(log, ej.id);
+      if (e1rm > 0) puntos.push({ fecha: new Date(log.fecha), e1rm });
+    }
+    puntos.sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+
+    const e1rmActual = puntos.length > 0 ? puntos[puntos.length - 1].e1rm : null;
+
+    let e1rmDelta30dias: number | null = null;
+    if (e1rmActual !== null) {
+      const hace30 = new Date();
+      hace30.setDate(hace30.getDate() - 30);
+      const ventana = puntos.filter((p) => {
+        const diff = p.fecha.getTime() - hace30.getTime();
+        return diff >= -7 * 24 * 60 * 60 * 1000 && diff <= 7 * 24 * 60 * 60 * 1000;
+      });
+      if (ventana.length > 0) {
+        e1rmDelta30dias = e1rmActual - Math.max(...ventana.map((p) => p.e1rm));
+      } else if (puntos.length >= 2) {
+        e1rmDelta30dias = e1rmActual - puntos[0].e1rm;
+      }
+    }
+
+    // ── Fuerza relativa ───────────────────────────────────
+    let frActual: number | null = null;
+    let frDelta30dias: number | null = null;
+    let ultimoPesoKg: number | null = null;
+
+    if (e1rmActual !== null && pesos.length > 0) {
+      // Peso más reciente
+      ultimoPesoKg = pesos[pesos.length - 1].valor;
+
+      // Cruzar cada punto e1RM con peso
+      const frPuntos: { fecha: Date; ratio: number }[] = [];
+      for (const p of puntos) {
+        const peso = buscarPesoEnFecha(p.fecha, pesos);
+        if (peso !== null && peso > 0) {
+          frPuntos.push({ fecha: p.fecha, ratio: p.e1rm / peso });
+        }
+      }
+      frPuntos.sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+
+      if (frPuntos.length > 0) {
+        frActual = frPuntos[frPuntos.length - 1].ratio;
+
+        const hace30 = new Date();
+        hace30.setDate(hace30.getDate() - 30);
+        const ventanaFR = frPuntos.filter((p) => {
+          const diff = p.fecha.getTime() - hace30.getTime();
+          return diff >= -7 * 24 * 60 * 60 * 1000 && diff <= 7 * 24 * 60 * 60 * 1000;
+        });
+        if (ventanaFR.length > 0) {
+          frDelta30dias = frActual - Math.max(...ventanaFR.map((p) => p.ratio));
+        } else if (frPuntos.length >= 2) {
+          frDelta30dias = frActual - frPuntos[0].ratio;
+        }
+      }
+    }
+
+    result.push({
+      nombre: ej.nombre,
+      e1rmActual: e1rmActual ? +e1rmActual.toFixed(1) : null,
+      e1rmDelta30dias: e1rmDelta30dias !== null ? +e1rmDelta30dias.toFixed(1) : null,
+      frActual: frActual !== null ? +frActual.toFixed(2) : null,
+      frDelta30dias: frDelta30dias !== null ? +frDelta30dias.toFixed(2) : null,
+      ultimoPesoKg: ultimoPesoKg !== null ? +ultimoPesoKg.toFixed(1) : null,
+    });
+  }
+
+  return result;
+}
+
 /**
  * Construye el LOCAL_SNAPSHOT con datos del atleta (perfil, peso,
  * ejercicios, rutinas, planificación e historial de entrenamiento).
@@ -106,53 +397,32 @@ async function buildLocalSnapshot(): Promise<string> {
     ? pesosOrdenados[pesosOrdenados.length - 1]
     : null;
 
-  // ── Métricas de tendencia de peso ──────────────────────────────────
+  // ── Métricas EMA-7 de tendencia de peso ───────────────────────────
+  const diarios = agruparPromedioDiario(pesosOrdenados);
+  const ema7 = calcularEMA(diarios, 7);
+  const ultimoEMA = ema7.length > 0 ? ema7[ema7.length - 1] : null;
+  const velocidadSemanal = calcularVelocidadSemanal(diarios, ema7);
+
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const hace7Dias = new Date(hoy);
-  hace7Dias.setDate(hace7Dias.getDate() - 7);
-  const hace30Dias = new Date(hoy);
-  hace30Dias.setDate(hace30Dias.getDate() - 30);
-
-  const pesoEnRango = (inicio: Date, fin: Date) => {
-    const enRango = pesosOrdenados.filter((p) => {
-      const f = new Date(p.fecha);
-      return f >= inicio && f <= fin;
-    });
-    return enRango.length > 0 ? enRango : null;
-  };
-
-  const pesoHace7Dias = pesoEnRango(hace7Dias, hoy);
-  const pesoHace30Dias = pesoEnRango(hace30Dias, hoy);
-
-  const cambio7Dias =
-    ultimoPeso && pesoHace7Dias && pesoHace7Dias.length > 0
-      ? +(ultimoPeso.valor - pesoHace7Dias[0].valor).toFixed(1)
-      : null;
-  const cambio30Dias =
-    ultimoPeso && pesoHace30Dias && pesoHace30Dias.length > 0
-      ? +(ultimoPeso.valor - pesoHace30Dias[0].valor).toFixed(1)
-      : null;
-
-  const tasaSemanal =
-    cambio30Dias != null && pesosOrdenados.length >= 2
-      ? +(cambio30Dias / 4.29).toFixed(2)
-      : cambio7Dias != null
-        ? +cambio7Dias.toFixed(2)
-        : null;
 
   const tendenciaPeso =
-    tasaSemanal == null
+    velocidadSemanal == null
       ? "SIN_DATOS"
-      : tasaSemanal > 0.3
+      : velocidadSemanal.valor > 0.3
         ? "SUBIDA_SIGNIFICATIVA"
-        : tasaSemanal > 0.1
+        : velocidadSemanal.valor > 0.1
           ? "LIGERA_SUBIDA"
-          : tasaSemanal < -0.3
+          : velocidadSemanal.valor < -0.3
             ? "BAJADA_SIGNIFICATIVA"
-            : tasaSemanal < -0.1
+            : velocidadSemanal.valor < -0.1
               ? "LIGERA_BAJADA"
               : "ESTABLE";
+
+  // ── Métricas de fuerza (main lifts) ───────────────────────────────
+  const ejercicios = await db.ejercicios.toArray();
+  const logsTodos = await db.logsEntrenamientos.toArray();
+  const metricasFuerza = await calcularMetricasFuerza(ejercicios, logsTodos, pesosOrdenados);
 
   const hace28Dias = new Date();
   hace28Dias.setDate(hace28Dias.getDate() - 28);
@@ -175,7 +445,6 @@ async function buildLocalSnapshot(): Promise<string> {
   }
 
   // Catálogos completos para que la IA los conozca
-  const ejercicios = await db.ejercicios.toArray();
   const ejercicioMap = new Map(ejercicios.map((e) => [e.id, e]));
   const rutinas = await db.rutinas.toArray();
   const rutinaMap = new Map(rutinas.map((r) => [r.id, r]));
@@ -215,9 +484,12 @@ async function buildLocalSnapshot(): Promise<string> {
           ? `${ultimoPeso.valor} kg (${ultimoPeso.fecha})`
           : "NO_REGISTRADO",
       totalRegistros: pesosOrdenados.length,
-      cambio7Dias_kg: cambio7Dias,
-      cambio30Dias_kg: cambio30Dias,
-      tasaSemanal_kg: tasaSemanal,
+      ema7_actual_kg:
+        ultimoEMA != null
+          ? +ultimoEMA.toFixed(1)
+          : null,
+      tasaSemanal_kg: velocidadSemanal !== null ? +velocidadSemanal.valor.toFixed(2) : null,
+      metodo_tasa: velocidadSemanal?.metodo ?? null,
       tendencia: tendenciaPeso,
       registros: pesosOrdenados.map((p) => ({
         fecha: p.fecha,
@@ -225,6 +497,16 @@ async function buildLocalSnapshot(): Promise<string> {
         valor: p.valor,
       })),
     },
+    METRICAS_FUERZA: metricasFuerza.length > 0
+      ? metricasFuerza.map((m) => ({
+          ejercicio: m.nombre,
+          e1rm_kg: m.e1rmActual,
+          e1rm_delta30dias_kg: m.e1rmDelta30dias,
+          fuerza_relativa_xBW: m.frActual,
+          fr_delta30dias_xBW: m.frDelta30dias,
+          peso_corporal_kg: m.ultimoPesoKg,
+        }))
+      : "SIN_DATOS",
     CATALOGO_EJERCICIOS: ejercicios.map((e) => ({
       id: e.id,
       nombre: e.nombre,
