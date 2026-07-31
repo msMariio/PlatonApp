@@ -38,11 +38,7 @@ import { usePesosOrdenados } from "../peso-tracker/usePesosOrdenados";
 import { EditPesoDialog } from "../peso-tracker/components/EditPesoDialog";
 import { ChartPesoCorporal } from "./components/ChartPesoCorporal";
 import { db, type PesoDiario, type Ejercicio } from "../../core/db";
-import {
-  useE1RM,
-  useEjerciciosConLogs,
-  MAIN_LIFT_KEYWORDS,
-} from "./useE1RM";
+import { useE1RM, useEjerciciosConLogs, MAIN_LIFT_KEYWORDS } from "./useE1RM";
 import { useFuerzaRelativa } from "./useFuerzaRelativa";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -51,7 +47,7 @@ const formatXAxis = (
   d: Date | string | number,
   context?: {
     location?: "tick" | "tooltip" | "legend" | "zoom-slider-tooltip";
-  }
+  },
 ) => {
   if (!(d instanceof Date)) return String(d);
   const dd = d.getDate().toString().padStart(2, "0");
@@ -74,14 +70,14 @@ const obtenerHoraActual = () =>
  * Busca ejercicios que coincidan con los keywords principales.
  */
 function findMainLifts(
-  ejercicios: Ejercicio[]
+  ejercicios: Ejercicio[],
 ): (Ejercicio & { keyword: string })[] {
   const result: (Ejercicio & { keyword: string })[] = [];
   for (const kw of MAIN_LIFT_KEYWORDS) {
     const found = ejercicios.find(
       (e) =>
         e.nombre.toLowerCase().includes(kw.toLowerCase()) &&
-        !result.some((r) => r.id === e.id)
+        !result.some((r) => r.id === e.id),
     );
     if (found) {
       result.push({ ...found, keyword: kw });
@@ -93,7 +89,7 @@ function findMainLifts(
 /** Filtra ejercicios que no son main lifts para el dropdown. */
 function getOtherExercises(
   ejercicios: Ejercicio[],
-  mainLifts: (Ejercicio & { keyword: string })[]
+  mainLifts: (Ejercicio & { keyword: string })[],
 ): Ejercicio[] {
   const mainIds = new Set(mainLifts.map((e) => e.id));
   return ejercicios.filter((e) => !mainIds.has(e.id));
@@ -118,22 +114,20 @@ export function MetricsHub() {
   const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
   const pesosFiltrados = filtrarPesos(pesos, timeframePeso);
 
-
-
   // ─── e1RM state ───────────────────────────────────────────
   const ejerciciosConLogs = useEjerciciosConLogs();
   const mainLifts = useMemo(
     () => findMainLifts(ejerciciosConLogs),
-    [ejerciciosConLogs]
+    [ejerciciosConLogs],
   );
   const otherExercises = useMemo(
     () => getOtherExercises(ejerciciosConLogs, mainLifts),
-    [ejerciciosConLogs, mainLifts]
+    [ejerciciosConLogs, mainLifts],
   );
 
-  const [selectedEjercicioId, setSelectedEjercicioId] = useState<
-    string | null
-  >(null);
+  const [selectedEjercicioId, setSelectedEjercicioId] = useState<string | null>(
+    null,
+  );
 
   // Auto-seleccionar primer main lift si no hay selección
   const activeEjercicioId =
@@ -144,7 +138,7 @@ export function MetricsHub() {
   const activeEjercicio = useLiveQuery(
     () =>
       activeEjercicioId ? db.ejercicios.get(activeEjercicioId) : undefined,
-    [activeEjercicioId]
+    [activeEjercicioId],
   );
 
   const { puntos, actual, delta30dias } = useE1RM(activeEjercicioId);
@@ -199,7 +193,7 @@ export function MetricsHub() {
   };
 
   const handleGuardarEdicion = async (
-    changes: Pick<PesoDiario, "fecha" | "hora" | "valor">
+    changes: Pick<PesoDiario, "fecha" | "hora" | "valor">,
   ) => {
     if (editando?.id === undefined) return;
     await db.pesos.update(editando.id, changes);
@@ -272,350 +266,373 @@ export function MetricsHub() {
           ═══════════════════════════════════════════════════════════ */}
       <Fade in={tab === "fuerza"} timeout={200} unmountOnExit>
         <Box>
-      <Card
-        sx={{
-          borderLeft: 4,
-          borderColor: "primary.main",
-        }}
-      >
-        <CardContent>
-          <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: "center" }}>
-            <FitnessCenterIcon color="primary" fontSize="small" />
-            <SectionLabel sx={{ mb: 0 }}>
-              [ RENDIMIENTO DE FUERZA ]
-            </SectionLabel>
-          </Stack>
+          <Card
+            sx={{
+              borderLeft: 4,
+              borderColor: "primary.main",
+            }}
+          >
+            <CardContent>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mb: 2, alignItems: "center" }}
+              >
+                <FitnessCenterIcon color="primary" fontSize="small" />
+                <SectionLabel sx={{ mb: 0 }}>
+                  [ RENDIMIENTO DE FUERZA ]
+                </SectionLabel>
+              </Stack>
 
-          {/* Exercise selector */}
-          {mainLifts.length > 0 && (
-            <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap" }}>
-              {mainLifts.map((ej) => (
-                <Chip
-                  key={ej.id}
-                  label={ej.keyword.toUpperCase()}
-                  onClick={() => setSelectedEjercicioId(ej.id)}
-                  variant={
-                    activeEjercicioId === ej.id ? "filled" : "outlined"
-                  }
-                  color="primary"
+              {/* Exercise selector */}
+              {mainLifts.length > 0 && (
+                <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap" }}>
+                  {mainLifts.map((ej) => (
+                    <Chip
+                      key={ej.id}
+                      label={ej.keyword.toUpperCase()}
+                      onClick={() => setSelectedEjercicioId(ej.id)}
+                      variant={
+                        activeEjercicioId === ej.id ? "filled" : "outlined"
+                      }
+                      color="primary"
+                      size="small"
+                      sx={{
+                        borderRadius: 0,
+                        letterSpacing: "0.04em",
+                        fontWeight: activeEjercicioId === ej.id ? 700 : 400,
+                      }}
+                    />
+                  ))}
+                </Box>
+              )}
+
+              {otherExercises.length > 0 && (
+                <Autocomplete
                   size="small"
-                  sx={{
-                    borderRadius: 0,
-                    letterSpacing: "0.04em",
-                    fontWeight:
-                      activeEjercicioId === ej.id ? 700 : 400,
+                  options={otherExercises}
+                  getOptionLabel={(opt) => opt.nombre}
+                  value={
+                    activeEjercicio &&
+                    !mainLifts.some((m) => m.id === activeEjercicio.id)
+                      ? activeEjercicio
+                      : null
+                  }
+                  onChange={(_, newValue) => {
+                    if (newValue) setSelectedEjercicioId(newValue.id);
                   }}
-                />
-              ))}
-            </Box>
-          )}
-
-          {otherExercises.length > 0 && (
-            <Autocomplete
-              size="small"
-              options={otherExercises}
-              getOptionLabel={(opt) => opt.nombre}
-              value={
-                activeEjercicio &&
-                !mainLifts.some((m) => m.id === activeEjercicio.id)
-                  ? activeEjercicio
-                  : null
-              }
-              onChange={(_, newValue) => {
-                if (newValue) setSelectedEjercicioId(newValue.id);
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="OTROS EJERCICIOS"
-                  variant="outlined"
-                  sx={{
-                    "& .MuiOutlinedInput-root": { borderRadius: 0 },
-                    "& .MuiInputLabel-root": {
-                      letterSpacing: "0.05em",
-                    },
-                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="OTROS EJERCICIOS"
+                      variant="outlined"
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: 0 },
+                        "& .MuiInputLabel-root": {
+                          letterSpacing: "0.05em",
+                        },
+                      }}
+                    />
+                  )}
+                  sx={{ mb: 2, maxWidth: 400 }}
                 />
               )}
-              sx={{ mb: 2, maxWidth: 400 }}
-            />
-          )}
 
-          {!activeEjercicioId ? (
-            <EmptyStateCard height={120}>
-              [ SIN EJERCICIOS REGISTRADOS // COMPLETA UN ENTRENAMIENTO ]
-            </EmptyStateCard>
-          ) : (
-            <>
-              {/* KPI Card */}
-              <Card
-                variant="outlined"
-                sx={{
-                  mb: 2,
-                  borderRadius: 0,
-                  bgcolor: "background.default",
-                }}
-              >
-                <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
-                  <Stack
-                    direction="row"
+              {!activeEjercicioId ? (
+                <EmptyStateCard height={120}>
+                  [ SIN EJERCICIOS REGISTRADOS // COMPLETA UN ENTRENAMIENTO ]
+                </EmptyStateCard>
+              ) : (
+                <>
+                  {/* KPI Card */}
+                  <Card
+                    variant="outlined"
                     sx={{
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                      gap: 2,
+                      mb: 2,
+                      borderRadius: 0,
+                      bgcolor: "background.default",
                     }}
                   >
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ letterSpacing: "0.05em" }}
-                      >
-                        e1RM ACTUAL — {activeEjercicio?.nombre.toUpperCase()}
-                      </Typography>
-                      <Typography
-                        variant="h4"
+                    <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
+                      <Stack
+                        direction="row"
                         sx={{
-                          fontWeight: 700,
-                          fontFamily: "monospace",
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        {actual !== null
-                          ? `${actual.toLocaleString("es-ES", { maximumFractionDigits: 1 })} KG`
-                          : "—"}
-                      </Typography>
-                    </Box>
-
-                    {delta30dias !== null && delta30dias !== 0 && (
-                      <Box
-                        sx={{
-                          display: "flex",
                           alignItems: "center",
-                          gap: 1,
-                          px: 2,
-                          py: 1,
-                          border: 1,
-                          borderColor:
-                            delta30dias > 0 ? "success.main" : "error.main",
-                          bgcolor:
-                            delta30dias > 0
-                              ? "rgba(76, 175, 80, 0.08)"
-                              : "rgba(244, 67, 54, 0.08)",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 2,
                         }}
                       >
-                        {delta30dias > 0 ? (
-                          <TrendingUpIcon fontSize="small" color="success" />
-                        ) : (
-                          <TrendingDownIcon fontSize="small" color="error" />
-                        )}
                         <Box>
                           <Typography
                             variant="caption"
                             color="text.secondary"
-                            sx={{ display: "block", lineHeight: 1 }}
+                            sx={{ letterSpacing: "0.05em" }}
                           >
-                            30 DÍAS
+                            e1RM ACTUAL —{" "}
+                            {activeEjercicio?.nombre.toUpperCase()}
                           </Typography>
                           <Typography
-                            variant="body1"
+                            variant="h4"
                             sx={{
-                              fontWeight: "bold",
+                              fontWeight: 700,
                               fontFamily: "monospace",
-                              color:
-                                delta30dias > 0
-                                  ? "success.main"
-                                  : "error.main",
+                              letterSpacing: "0.02em",
                             }}
                           >
-                            {delta30dias > 0 ? "+" : ""}
-                            {delta30dias.toLocaleString("es-ES", {
-                              maximumFractionDigits: 2,
-                            })}{" "}
-                            KG
+                            {actual !== null
+                              ? `${actual.toLocaleString("es-ES", { maximumFractionDigits: 1 })} KG`
+                              : "—"}
                           </Typography>
                         </Box>
-                      </Box>
-                    )}
-                  </Stack>
-                </CardContent>
-              </Card>
 
-              {/* e1RM Chart */}
-              {puntos.length < 1 ? (
-                <EmptyStateCard height={250}>
-                  [ SIN DATOS DE e1RM // COMPLETA SERIES DE {activeEjercicio?.nombre.toUpperCase()} ]
-                </EmptyStateCard>
-              ) : (
-                <ChartCard
-                  title="PROGRESIÓN e1RM"
-                  xData={puntos.map((p) => p.fecha)}
-                  yData={puntos.map((p) => p.e1rm)}
-                  seriesLabel="e1RM (KG)"
-                  color={theme.palette.primary.main}
-                  yMin={e1rmYMin}
-                  yMax={e1rmYMax}
-                  xValueFormatter={formatXAxis}
-                  xTickMinStep={DAY_IN_MS}
-                  xTickMaxStep={DAY_IN_MS}
-                  chartType="line"
-                  emptyMessage="[ SIN DATOS ]"
-                />
-              )}
-
-              {/* ─── FUERZA RELATIVA ───────────────────────────── */}
-              <Box
-                sx={{
-                  mt: 3,
-                  pt: 3,
-                  borderTop: 1,
-                  borderColor: "divider",
-                }}
-              >
-                <SectionLabel sx={{ mb: 2 }}>
-                  [ FUERZA RELATIVA — e1RM / PESO CORPORAL ]
-                </SectionLabel>
-
-                {frPuntos.length === 0 ? (
-                  <EmptyStateCard height={120}>
-                    [ SIN DATOS // REGISTRA PESO CORPORAL Y COMPLETA ENTRENAMIENTOS ]
-                  </EmptyStateCard>
-                ) : (
-                  <>
-                    {/* FR KPI Card */}
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        mb: 2,
-                        borderRadius: 0,
-                        bgcolor: "background.default",
-                        borderColor: "info.main",
-                      }}
-                    >
-                      <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
-                        <Stack
-                          direction="row"
-                          sx={{
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            flexWrap: "wrap",
-                            gap: 2,
-                          }}
-                        >
-                          <Box>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ letterSpacing: "0.05em" }}
-                            >
-                              RATIO ACTUAL — {activeEjercicio?.nombre.toUpperCase()}
-                            </Typography>
-                            <Typography
-                              variant="h4"
-                              sx={{
-                                fontWeight: 700,
-                                fontFamily: "monospace",
-                                letterSpacing: "0.02em",
-                                color: "info.main",
-                              }}
-                            >
-                              {frActual !== null
-                                ? `${frActual.toFixed(2)}× BW`
-                                : "—"}
-                            </Typography>
-                            {frPuntos.length > 0 && (
+                        {delta30dias !== null && delta30dias !== 0 && (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                              px: 2,
+                              py: 1,
+                              border: 1,
+                              borderColor:
+                                delta30dias > 0 ? "success.main" : "error.main",
+                              bgcolor:
+                                delta30dias > 0
+                                  ? "rgba(76, 175, 80, 0.08)"
+                                  : "rgba(244, 67, 54, 0.08)",
+                            }}
+                          >
+                            {delta30dias > 0 ? (
+                              <TrendingUpIcon
+                                fontSize="small"
+                                color="success"
+                              />
+                            ) : (
+                              <TrendingDownIcon
+                                fontSize="small"
+                                color="error"
+                              />
+                            )}
+                            <Box>
                               <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", mt: 0.5 }}
+                                sx={{ display: "block", lineHeight: 1 }}
                               >
-                                {frPuntos[frPuntos.length - 1].e1rm.toFixed(1)} KG
-                                {" / "}
-                                {frPuntos[frPuntos.length - 1].peso.toFixed(1)} KG
+                                30 DÍAS
                               </Typography>
-                            )}
-                          </Box>
-
-                          {frDelta !== null && frDelta !== 0 && (
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 1,
-                                px: 2,
-                                py: 1,
-                                border: 1,
-                                borderColor:
-                                  frDelta > 0 ? "success.main" : "error.main",
-                                bgcolor:
-                                  frDelta > 0
-                                    ? "rgba(76, 175, 80, 0.08)"
-                                    : "rgba(244, 67, 54, 0.08)",
-                              }}
-                            >
-                              {frDelta > 0 ? (
-                                <TrendingUpIcon
-                                  fontSize="small"
-                                  color="success"
-                                />
-                              ) : (
-                                <TrendingDownIcon
-                                  fontSize="small"
-                                  color="error"
-                                />
-                              )}
-                              <Box>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: "block", lineHeight: 1 }}
-                                >
-                                  30 DÍAS
-                                </Typography>
-                                <Typography
-                                  variant="body1"
-                                  sx={{
-                                    fontWeight: "bold",
-                                    fontFamily: "monospace",
-                                    color:
-                                      frDelta > 0
-                                        ? "success.main"
-                                        : "error.main",
-                                  }}
-                                >
-                                  {frDelta > 0 ? "+" : ""}
-                                  {frDelta.toFixed(2)}×
-                                </Typography>
-                              </Box>
+                              <Typography
+                                variant="body1"
+                                sx={{
+                                  fontWeight: "bold",
+                                  fontFamily: "monospace",
+                                  color:
+                                    delta30dias > 0
+                                      ? "success.main"
+                                      : "error.main",
+                                }}
+                              >
+                                {delta30dias > 0 ? "+" : ""}
+                                {delta30dias.toLocaleString("es-ES", {
+                                  maximumFractionDigits: 2,
+                                })}{" "}
+                                KG
+                              </Typography>
                             </Box>
-                          )}
-                        </Stack>
-                      </CardContent>
-                    </Card>
+                          </Box>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
 
-                    {/* FR Chart */}
+                  {/* e1RM Chart */}
+                  {puntos.length < 1 ? (
+                    <EmptyStateCard height={250}>
+                      [ SIN DATOS DE e1RM // COMPLETA SERIES DE{" "}
+                      {activeEjercicio?.nombre.toUpperCase()} ]
+                    </EmptyStateCard>
+                  ) : (
                     <ChartCard
-                      title="PROGRESIÓN FUERZA RELATIVA"
-                      xData={frPuntos.map((p) => p.fecha)}
-                      yData={frPuntos.map((p) => p.ratio)}
-                      seriesLabel="Ratio (× BW)"
-                      color={theme.palette.info.main}
-                      yMin={frYMin}
-                      yMax={frYMax}
+                      title="PROGRESIÓN e1RM"
+                      xData={puntos.map((p) => p.fecha)}
+                      yData={puntos.map((p) => p.e1rm)}
+                      seriesLabel="e1RM (KG)"
+                      color={theme.palette.primary.main}
+                      yMin={e1rmYMin}
+                      yMax={e1rmYMax}
                       xValueFormatter={formatXAxis}
                       xTickMinStep={DAY_IN_MS}
                       xTickMaxStep={DAY_IN_MS}
                       chartType="line"
                       emptyMessage="[ SIN DATOS ]"
                     />
-                  </>
-                )}
-              </Box>
-            </>
-          )}
-        </CardContent>
-      </Card>
+                  )}
+
+                  {/* ─── FUERZA RELATIVA ───────────────────────────── */}
+                  <Box
+                    sx={{
+                      mt: 3,
+                      pt: 3,
+                      borderTop: 1,
+                      borderColor: "divider",
+                    }}
+                  >
+                    <SectionLabel sx={{ mb: 2 }}>
+                      [ FUERZA RELATIVA — e1RM / PESO CORPORAL ]
+                    </SectionLabel>
+
+                    {frPuntos.length === 0 ? (
+                      <EmptyStateCard height={120}>
+                        [ SIN DATOS // REGISTRA PESO CORPORAL Y COMPLETA
+                        ENTRENAMIENTOS ]
+                      </EmptyStateCard>
+                    ) : (
+                      <>
+                        {/* FR KPI Card */}
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            mb: 2,
+                            borderRadius: 0,
+                            bgcolor: "background.default",
+                            borderColor: "info.main",
+                          }}
+                        >
+                          <CardContent
+                            sx={{ py: 2, "&:last-child": { pb: 2 } }}
+                          >
+                            <Stack
+                              direction="row"
+                              sx={{
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                flexWrap: "wrap",
+                                gap: 2,
+                              }}
+                            >
+                              <Box>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ letterSpacing: "0.05em" }}
+                                >
+                                  RATIO ACTUAL —{" "}
+                                  {activeEjercicio?.nombre.toUpperCase()}
+                                </Typography>
+                                <Typography
+                                  variant="h4"
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontFamily: "monospace",
+                                    letterSpacing: "0.02em",
+                                    color: "info.main",
+                                  }}
+                                >
+                                  {frActual !== null
+                                    ? `${frActual.toFixed(2)}× BW`
+                                    : "—"}
+                                </Typography>
+                                {frPuntos.length > 0 && (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: "block", mt: 0.5 }}
+                                  >
+                                    {frPuntos[frPuntos.length - 1].e1rm.toFixed(
+                                      1,
+                                    )}{" "}
+                                    KG
+                                    {" / "}
+                                    {frPuntos[frPuntos.length - 1].peso.toFixed(
+                                      1,
+                                    )}{" "}
+                                    KG
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              {frDelta !== null && frDelta !== 0 && (
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                    px: 2,
+                                    py: 1,
+                                    border: 1,
+                                    borderColor:
+                                      frDelta > 0
+                                        ? "success.main"
+                                        : "error.main",
+                                    bgcolor:
+                                      frDelta > 0
+                                        ? "rgba(76, 175, 80, 0.08)"
+                                        : "rgba(244, 67, 54, 0.08)",
+                                  }}
+                                >
+                                  {frDelta > 0 ? (
+                                    <TrendingUpIcon
+                                      fontSize="small"
+                                      color="success"
+                                    />
+                                  ) : (
+                                    <TrendingDownIcon
+                                      fontSize="small"
+                                      color="error"
+                                    />
+                                  )}
+                                  <Box>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: "block", lineHeight: 1 }}
+                                    >
+                                      30 DÍAS
+                                    </Typography>
+                                    <Typography
+                                      variant="body1"
+                                      sx={{
+                                        fontWeight: "bold",
+                                        fontFamily: "monospace",
+                                        color:
+                                          frDelta > 0
+                                            ? "success.main"
+                                            : "error.main",
+                                      }}
+                                    >
+                                      {frDelta > 0 ? "+" : ""}
+                                      {frDelta.toFixed(2)}×
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              )}
+                            </Stack>
+                          </CardContent>
+                        </Card>
+
+                        {/* FR Chart */}
+                        <ChartCard
+                          title="PROGRESIÓN FUERZA RELATIVA"
+                          xData={frPuntos.map((p) => p.fecha)}
+                          yData={frPuntos.map((p) => p.ratio)}
+                          seriesLabel="Ratio (× BW)"
+                          color={theme.palette.info.main}
+                          yMin={frYMin}
+                          yMax={frYMax}
+                          xValueFormatter={formatXAxis}
+                          xTickMinStep={DAY_IN_MS}
+                          xTickMaxStep={DAY_IN_MS}
+                          chartType="line"
+                          emptyMessage="[ SIN DATOS ]"
+                        />
+                      </>
+                    )}
+                  </Box>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </Box>
       </Fade>
 
@@ -624,223 +641,230 @@ export function MetricsHub() {
           ═══════════════════════════════════════════════════════════ */}
       <Fade in={tab === "peso"} timeout={200} unmountOnExit>
         <Box>
-      <Card
-        sx={{
-          borderLeft: 4,
-          borderColor: "warning.main",
-        }}
-      >
-        <CardContent>
-          <Accordion
-            expanded={pesoExpanded}
-            onChange={(_, expanded) => setPesoExpanded(expanded)}
-            disableGutters
-            elevation={0}
+          <Card
             sx={{
-              bgcolor: "transparent",
-              "&:before": { display: "none" },
+              borderLeft: 4,
+              borderColor: "warning.main",
             }}
           >
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
-              sx={{
-                p: 0,
-                minHeight: "auto",
-                "& .MuiAccordionSummary-content": {
-                  my: 0,
-                },
-              }}
-            >
-              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                <MonitorWeightIcon color="warning" fontSize="small" />
-                <SectionLabel sx={{ mb: 0 }}>
-                  [ PESO CORPORAL ]
-                </SectionLabel>
-                {ultimoPeso && (
-                  <Chip
-                    label={`${ultimoPeso.valor.toLocaleString("es-ES", { maximumFractionDigits: 3 })} KG`}
-                    size="small"
-                    color="warning"
-                    variant="outlined"
-                    sx={{ borderRadius: 0, ml: 1 }}
-                  />
-                )}
-              </Stack>
-            </AccordionSummary>
-            <AccordionDetails sx={{ p: 0, pt: 2 }}>
-              {/* Quick input */}
-              <Card variant="outlined" sx={{ mb: 2, borderRadius: 0 }}>
-                <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
-                  <Box component="form" onSubmit={handleGuardarPeso}>
-                    <Stack spacing={1.5}>
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.5}
-                      >
-                        <AppTextField
-                          type="date"
-                          label="FECHA"
-                          size="small"
-                          fullWidth
-                          value={fechaInput}
-                          onChange={(e) => setFechaInput(e.target.value)}
-                        />
-                        <AppTextField
-                          type="time"
-                          label="HORA"
-                          size="small"
-                          fullWidth
-                          value={horaInput}
-                          onChange={(e) => setHoraInput(e.target.value)}
-                        />
-                      </Stack>
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={1.5}
-                      >
-                        <InputNumber
-                          label="PESO (KG)"
-                          size="small"
-                          min={0}
-                          step={0.01}
-                          value={pesoInput}
-                          onValueChange={(v) => setPesoInput(v)}
-                          placeholder={
-                            ultimoPeso
-                              ? Number(
-                                  ultimoPeso.valor.toFixed(3)
-                                ).toString()
-                              : undefined
-                          }
-                        />
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          color="primary"
-                          disableElevation
-                          fullWidth
-                          disabled={!pesoInput || !fechaInput || !horaInput}
-                        >
-                          REGISTRAR
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  </Box>
-                </CardContent>
-              </Card>
-
-              {/* Weight Chart — recibe TODOS los pesos; la MA se calcula con el historial completo */}
-              <ChartPesoCorporal
-                pesos={pesos}
-                timeframe={timeframePeso}
-                onTimeframeChange={setTimeframePeso}
-              />
-
-              {/* Logs */}
-              <Card
-                variant="outlined"
-                sx={{ mt: 2, borderRadius: 0 }}
+            <CardContent sx={{ px: 1 }}>
+              <Accordion
+                expanded={pesoExpanded}
+                onChange={(_, expanded) => setPesoExpanded(expanded)}
+                disableGutters
+                elevation={0}
+                sx={{
+                  bgcolor: "transparent",
+                  "&:before": { display: "none" },
+                }}
               >
-                <CardContent
-                  sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{
+                    p: 0,
+                    minHeight: "auto",
+                    "& .MuiAccordionSummary-content": {
+                      my: 0,
+                    },
+                  }}
                 >
-                  <Box
-                    onClick={() => setRegistrosExpanded((p) => !p)}
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      userSelect: "none",
-                      mb: 1,
-                      "&:hover": { color: "primary.main" },
-                      transition: "color 0.15s",
-                    }}
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: "center" }}
                   >
-                    <SectionLabel sx={{ mb: 0 }}>REGISTROS</SectionLabel>
-                    {registrosExpanded ? (
-                      <KeyboardArrowUpIcon fontSize="small" color="action" />
-                    ) : (
-                      <KeyboardArrowDownIcon fontSize="small" color="action" />
+                    <MonitorWeightIcon color="warning" fontSize="small" />
+                    <SectionLabel sx={{ mb: 0 }}>
+                      [ PESO CORPORAL ]
+                    </SectionLabel>
+                    {ultimoPeso && (
+                      <Chip
+                        label={`${ultimoPeso.valor.toLocaleString("es-ES", { maximumFractionDigits: 3 })} KG`}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ borderRadius: 0, ml: 1 }}
+                      />
                     )}
-                  </Box>
-                  <Collapse in={registrosExpanded}>
-                  {pesosFiltrados.length === 0 ? (
-                    <EmptyStateCard height={80}>
-                      [ NO HAY REGISTROS EN ESTE PERIODO ]
-                    </EmptyStateCard>
-                  ) : (
-                    [...pesosFiltrados].reverse().map((p) => (
-                      <Stack
-                        key={p.id}
-                        direction="row"
-                        spacing={2}
+                  </Stack>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0, pt: 2 }}>
+                  {/* Quick input */}
+                  <Card variant="outlined" sx={{ mb: 2, borderRadius: 0 }}>
+                    <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                      <Box component="form" onSubmit={handleGuardarPeso}>
+                        <Stack spacing={1.5}>
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                          >
+                            <AppTextField
+                              type="date"
+                              label="FECHA"
+                              size="small"
+                              fullWidth
+                              value={fechaInput}
+                              onChange={(e) => setFechaInput(e.target.value)}
+                            />
+                            <AppTextField
+                              type="time"
+                              label="HORA"
+                              size="small"
+                              fullWidth
+                              value={horaInput}
+                              onChange={(e) => setHoraInput(e.target.value)}
+                            />
+                          </Stack>
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                          >
+                            <InputNumber
+                              label="PESO (KG)"
+                              size="small"
+                              min={0}
+                              step={0.01}
+                              value={pesoInput}
+                              onValueChange={(v) => setPesoInput(v)}
+                              placeholder={
+                                ultimoPeso
+                                  ? Number(
+                                      ultimoPeso.valor.toFixed(3),
+                                    ).toString()
+                                  : undefined
+                              }
+                            />
+                            <Button
+                              type="submit"
+                              variant="contained"
+                              color="primary"
+                              disableElevation
+                              fullWidth
+                              disabled={!pesoInput || !fechaInput || !horaInput}
+                            >
+                              REGISTRAR
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    </CardContent>
+                  </Card>
+
+                  {/* Weight Chart — recibe TODOS los pesos; la MA se calcula con el historial completo */}
+                  <ChartPesoCorporal
+                    pesos={pesos}
+                    timeframe={timeframePeso}
+                    onTimeframeChange={setTimeframePeso}
+                  />
+
+                  {/* Logs */}
+                  <Card variant="outlined" sx={{ mt: 2, borderRadius: 0 }}>
+                    <CardContent
+                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                    >
+                      <Box
+                        onClick={() => setRegistrosExpanded((p) => !p)}
                         sx={{
-                          py: 1,
+                          display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          borderBottom: 1,
-                          borderColor: "divider",
-                          "&:last-of-type": { borderBottom: "none" },
+                          cursor: "pointer",
+                          userSelect: "none",
+                          mb: 1,
+                          "&:hover": { color: "primary.main" },
+                          transition: "color 0.15s",
                         }}
                       >
-                        <Stack direction="row" spacing={2}>
-                          <Typography variant="body2">
-                            {p.fecha}{" "}
-                            <Box
-                              component="span"
-                              sx={{ color: "text.secondary" }}
+                        <SectionLabel sx={{ mb: 0 }}>REGISTROS</SectionLabel>
+                        {registrosExpanded ? (
+                          <KeyboardArrowUpIcon
+                            fontSize="small"
+                            color="action"
+                          />
+                        ) : (
+                          <KeyboardArrowDownIcon
+                            fontSize="small"
+                            color="action"
+                          />
+                        )}
+                      </Box>
+                      <Collapse in={registrosExpanded}>
+                        {pesosFiltrados.length === 0 ? (
+                          <EmptyStateCard height={80}>
+                            [ NO HAY REGISTROS EN ESTE PERIODO ]
+                          </EmptyStateCard>
+                        ) : (
+                          [...pesosFiltrados].reverse().map((p) => (
+                            <Stack
+                              key={p.id}
+                              direction="row"
+                              spacing={2}
+                              sx={{
+                                py: 1,
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                borderBottom: 1,
+                                borderColor: "divider",
+                                "&:last-of-type": { borderBottom: "none" },
+                              }}
                             >
-                              [{p.hora}]
-                            </Box>
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            color="warning.main"
-                            sx={{ fontWeight: "bold" }}
-                          >
-                            {p.valor.toLocaleString("es-ES", {
-                              maximumFractionDigits: 3,
-                            })}{" "}
-                            KG
-                          </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={1}>
-                          <IconButton
-                            size="small"
-                            onClick={() => setEditando(p)}
-                            aria-label="Editar registro"
-                            sx={{
-                              color: "text.secondary",
-                              "&:hover": { color: "primary.main" },
-                              borderRadius: 0,
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEliminarPeso(p.id)}
-                            aria-label="Eliminar registro"
-                            sx={{
-                              color: "text.secondary",
-                              "&:hover": { color: "error.main" },
-                              borderRadius: 0,
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
-                      </Stack>
-                    ))
-                  )}
-                  </Collapse>
-                </CardContent>
-              </Card>
-            </AccordionDetails>
-          </Accordion>
-        </CardContent>
-      </Card>
+                              <Stack direction="row" spacing={2}>
+                                <Typography variant="body2">
+                                  {p.fecha}{" "}
+                                  <Box
+                                    component="span"
+                                    sx={{ color: "text.secondary" }}
+                                  >
+                                    [{p.hora}]
+                                  </Box>
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  color="warning.main"
+                                  sx={{ fontWeight: "bold" }}
+                                >
+                                  {p.valor.toLocaleString("es-ES", {
+                                    maximumFractionDigits: 3,
+                                  })}{" "}
+                                  KG
+                                </Typography>
+                              </Stack>
+                              <Stack direction="row" spacing={1}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setEditando(p)}
+                                  aria-label="Editar registro"
+                                  sx={{
+                                    color: "text.secondary",
+                                    "&:hover": { color: "primary.main" },
+                                    borderRadius: 0,
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleEliminarPeso(p.id)}
+                                  aria-label="Eliminar registro"
+                                  sx={{
+                                    color: "text.secondary",
+                                    "&:hover": { color: "error.main" },
+                                    borderRadius: 0,
+                                  }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Stack>
+                            </Stack>
+                          ))
+                        )}
+                      </Collapse>
+                    </CardContent>
+                  </Card>
+                </AccordionDetails>
+              </Accordion>
+            </CardContent>
+          </Card>
         </Box>
       </Fade>
 

@@ -227,19 +227,52 @@ async function ejecutarEditarRutina(
       const idx = ejercicios.findIndex((ej) => ej.ejercicioId === targetId);
       if (idx === -1) continue;
 
-      // Reconstruir las series con los nuevos parámetros
-      const nuevosSeries: Serie[] = Array.from({ length: mod.series }, () =>
-        buildDefaultSerie({
-          series: mod.series,
-          repsMin: mod.repsMin,
-          repsMax: mod.repsMax,
-          pesoObjetivo: mod.pesoObjetivo,
-          rpeObjetivo: mod.rpeObjetivo,
-          duracionObjetivoMinutos: mod.duracionObjetivoMinutos,
-          distanciaObjetivoKm: mod.distanciaObjetivoKm,
-          descansoMinutos: mod.descansoMinutos,
-        }),
-      );
+      // Merge: preservar valores existentes, solo sobrescribir lo que la IA pasa explícitamente
+      const oldSeries = ejercicios[idx].series;
+      const targetCount = mod.series;
+      const nuevosSeries: Serie[] = [];
+
+      for (let i = 0; i < targetCount; i++) {
+        if (i < oldSeries.length) {
+          // Serie existente: mantener valores actuales y solo sobrescribir campos explícitos
+          const old = oldSeries[i];
+          const merged: Serie = { ...old };
+
+          if (mod.repsMin !== undefined) merged.repsMin = mod.repsMin;
+          if (mod.repsMax !== undefined) merged.repsMax = mod.repsMax;
+          if (mod.pesoObjetivo !== undefined) merged.pesoObjetivo = mod.pesoObjetivo;
+          if (mod.rpeObjetivo !== undefined) merged.rpeObjetivo = mod.rpeObjetivo;
+          if (mod.descansoMinutos !== undefined) {
+            merged.notas = `Descanso: ${mod.descansoMinutos} min`;
+          }
+          // Si se pasa duracion/distancia, cambia a modo cardio/tiempo
+          if (mod.duracionObjetivoMinutos !== undefined || mod.distanciaObjetivoKm !== undefined) {
+            if (mod.duracionObjetivoMinutos !== undefined) merged.duracionObjetivoMinutos = mod.duracionObjetivoMinutos;
+            if (mod.distanciaObjetivoKm !== undefined) merged.distanciaObjetivoKm = mod.distanciaObjetivoKm;
+            // Limpiar campos de fuerza al migrar a cardio
+            delete merged.repsMin;
+            delete merged.repsMax;
+            delete merged.pesoObjetivo;
+            delete merged.rpeObjetivo;
+          }
+
+          nuevosSeries.push(merged);
+        } else {
+          // Nueva serie adicional: usar buildDefaultSerie con los valores pasados (o defaults)
+          nuevosSeries.push(
+            buildDefaultSerie({
+              series: mod.series,
+              repsMin: mod.repsMin,
+              repsMax: mod.repsMax,
+              pesoObjetivo: mod.pesoObjetivo,
+              rpeObjetivo: mod.rpeObjetivo,
+              duracionObjetivoMinutos: mod.duracionObjetivoMinutos,
+              distanciaObjetivoKm: mod.distanciaObjetivoKm,
+              descansoMinutos: mod.descansoMinutos,
+            }),
+          );
+        }
+      }
 
       ejercicios[idx] = { ...ejercicios[idx], series: nuevosSeries };
       ejerciciosModificados++;

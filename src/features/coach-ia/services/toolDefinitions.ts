@@ -521,8 +521,9 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: "array",
           description:
             "Modificar las series de ejercicios YA EXISTENTES en la rutina. " +
-            "Identifica cada ejercicio por ID o nombre y especifica el nuevo número de series, reps, peso, etc. " +
-            "REEMPLAZA completamente las series actuales de ese ejercicio con las nuevas especificaciones. " +
+            "Identifica cada ejercicio por ID o nombre y especifica SOLO los campos que quieres cambiar. " +
+            "El sistema hace MERGE automático: los campos que NO envíes conservarán su valor actual. " +
+            "Ejemplo: si solo quieres cambiar el RPE, pasa 'series' (número actual) y 'rpeObjetivo'; no pases 'pesoObjetivo' ni 'repsMin/repsMax'. " +
             "ÚSALA SIEMPRE para cambiar series/reps/peso de ejercicios que ya están en la rutina. NUNCA uses ejerciciosAgregar para esto.",
           items: {
             type: "object",
@@ -537,24 +538,24 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               series: {
                 type: "integer",
-                description: "NUEVO número de series para este ejercicio (reemplaza el actual).",
+                description: "Número de series para este ejercicio. Si no cambia, usa el número actual (visible en el LOCAL_SNAPSHOT).",
               },
               repsMin: {
                 type: "integer",
-                description: "Repeticiones mínimas objetivo para todas las series.",
+                description: "Repeticiones mínimas objetivo para todas las series. SOLO inclúyelo si el atleta quiere cambiar las reps mínimas.",
               },
               repsMax: {
                 type: "integer",
-                description: "Repeticiones máximas objetivo para todas las series.",
+                description: "Repeticiones máximas objetivo para todas las series. SOLO inclúyelo si el atleta quiere cambiar las reps máximas.",
               },
               pesoObjetivo: {
                 type: "number",
-                description: "Peso objetivo en kg para todas las series.",
+                description: "Peso objetivo en kg para todas las series. SOLO inclúyelo si el atleta quiere cambiar el peso.",
               },
               rpeObjetivo: {
                 type: "number",
                 description:
-                  "RPE objetivo para todas las series (escala 1-10). Opcional.",
+                  "RPE objetivo para todas las series (escala 1-10). SOLO inclúyelo si el atleta quiere cambiar el RPE.",
               },
               descansoMinutos: {
                 type: "number",

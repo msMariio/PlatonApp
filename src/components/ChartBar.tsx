@@ -55,6 +55,7 @@ export function ChartBar({
   return (
     <Box sx={{ width: "100%", height }}>
       <BarChart
+        margin={{ left: 0, bottom: 0 }}
         xAxis={[xAxisEntry]}
         yAxis={[yAxisEntry]}
         series={[

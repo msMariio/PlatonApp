@@ -5,7 +5,12 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Ejercicio, EjercicioEnRutina, Serie, TipoEjercicio } from "../../../core/db";
+import type {
+  Ejercicio,
+  EjercicioEnRutina,
+  Serie,
+  TipoEjercicio,
+} from "../../../core/db";
 import { useStableNodeRef } from "../../../hooks/useStableNodeRef";
 import InputNumber from "../../../components/InputNumber";
 import { DragHandle } from "../../../components/DragHandle";
@@ -187,9 +192,7 @@ export function EjercicioEnRutinaCard({
           max={10}
           step={0.5}
           value={s.rpeObjetivo ?? 0}
-          onValueChange={(v) =>
-            handleSerieChange(idx, { rpeObjetivo: v ?? 0 })
-          }
+          onValueChange={(v) => handleSerieChange(idx, { rpeObjetivo: v ?? 0 })}
           sx={{ flex: 1 }}
         />
       </>
@@ -279,16 +282,17 @@ export function EjercicioEnRutinaCard({
                 sx={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 1,
-                  p: 2,
-                  border: 1,
+                  gap: 0.5,
+                  px: 0.5,
+                  py: 1,
+                  // border: 1,
                   borderColor: "divider",
                 }}
               >
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ minWidth: 28 }}
+                  sx={{ minWidth: 28, fontWeight: "bold" }}
                 >
                   S{idx + 1}
                 </Typography>

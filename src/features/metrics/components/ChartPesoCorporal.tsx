@@ -49,7 +49,10 @@ function agruparPromedioDiario(pesos: PesoDiario[]): PuntoDiario[] {
  * Calcula la media móvil exponencial (EMA) de N días.
  * α = 2/(N+1). El primer valor se inicializa con el primer dato.
  */
-function calcularEMA(diarios: PuntoDiario[], ventana: number): (number | null)[] {
+function calcularEMA(
+  diarios: PuntoDiario[],
+  ventana: number,
+): (number | null)[] {
   const alpha = 2 / (ventana + 1);
   const ema: (number | null)[] = [];
   for (let i = 0; i < diarios.length; i++) {
@@ -67,7 +70,7 @@ function calcularEMA(diarios: PuntoDiario[], ventana: number): (number | null)[]
  * Devuelve { slope, intercept } o null si no hay suficientes datos.
  */
 function linearRegression(
-  points: { x: number; y: number }[]
+  points: { x: number; y: number }[],
 ): { slope: number; intercept: number } | null {
   const n = points.length;
   if (n < 2) return null;
@@ -91,7 +94,10 @@ function linearRegression(
 const EMA_WINDOW = 7;
 
 /** Filtra los puntos diarios al rango del timeframe. */
-function filtrarPorTimeframe(diarios: PuntoDiario[], tf: Timeframe): PuntoDiario[] {
+function filtrarPorTimeframe(
+  diarios: PuntoDiario[],
+  tf: Timeframe,
+): PuntoDiario[] {
   if (tf === "TODO") return diarios;
   const dias = tf === "7D" ? 7 : tf === "30D" ? 30 : 365;
   const limite = new Date();
@@ -108,7 +114,7 @@ function filtrarPorTimeframe(diarios: PuntoDiario[], tf: Timeframe): PuntoDiario
  */
 function calcularVelocidadSemanal(
   diarios: PuntoDiario[],
-  trend: (number | null)[]
+  trend: (number | null)[],
 ): number | null {
   // ── Nivel 1: Regresión lineal sobre últimos 14 puntos de tendencia ──
   const ultimos: { diasDesdePrimero: number; y: number }[] = [];
@@ -147,11 +153,15 @@ function calcularVelocidadSemanal(
     let bestDiff = Infinity;
     for (let i = diarios.length - 2; i >= 0; i--) {
       const diff = Math.abs(diarios[i].date.getTime() - targetDate.getTime());
-      if (diff < bestDiff) { bestDiff = diff; bestEarlier = diarios[i]; }
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestEarlier = diarios[i];
+      }
     }
     if (bestEarlier) {
       const daysDiff =
-        (last.date.getTime() - bestEarlier.date.getTime()) / (24 * 60 * 60 * 1000);
+        (last.date.getTime() - bestEarlier.date.getTime()) /
+        (24 * 60 * 60 * 1000);
       if (daysDiff >= 3) {
         return ((last.valor - bestEarlier.valor) / daysDiff) * 7;
       }
@@ -173,7 +183,7 @@ const formatXAxis = (
   d: Date | string | number,
   context?: {
     location?: "tick" | "tooltip" | "legend" | "zoom-slider-tooltip";
-  }
+  },
 ) => {
   if (!(d instanceof Date)) return String(d);
   const dd = d.getDate().toString().padStart(2, "0");
@@ -194,28 +204,44 @@ export function ChartPesoCorporal({
   // ─── Procesamiento de datos ───────────────────────────────
   // El EMA se calcula con TODOS los datos históricos, luego se filtra
   // por timeframe solo para la visualización en el gráfico.
-  const { diarios, trend, velocity, dates, rawValues, trendValues, trendLabel } =
-    useMemo(() => {
-      const all = agruparPromedioDiario(pesos);
-      const t = calcularEMA(all, emaWindow);
-      const v = calcularVelocidadSemanal(all, t);
+  const {
+    diarios,
+    trend,
+    velocity,
+    dates,
+    rawValues,
+    trendValues,
+    trendLabel,
+  } = useMemo(() => {
+    const all = agruparPromedioDiario(pesos);
+    const t = calcularEMA(all, emaWindow);
+    const v = calcularVelocidadSemanal(all, t);
 
-      // Filtrar para mostrar solo el rango del timeframe
-      const d = filtrarPorTimeframe(all, timeframe);
+    // Filtrar para mostrar solo el rango del timeframe
+    const d = filtrarPorTimeframe(all, timeframe);
 
-      // Encontrar el índice de inicio en el array completo que corresponde
-      // al primer elemento del rango filtrado (d es un sufijo contiguo de all)
-      const startIdx = d.length > 0
+    // Encontrar el índice de inicio en el array completo que corresponde
+    // al primer elemento del rango filtrado (d es un sufijo contiguo de all)
+    const startIdx =
+      d.length > 0
         ? all.findIndex((p) => p.date.getTime() === d[0].date.getTime())
         : all.length;
-      const dates = all.slice(startIdx).map((p) => p.date);
-      const rawValues = all.slice(startIdx).map((p) => p.valor);
-      const trendValues = t.slice(startIdx);
+    const dates = all.slice(startIdx).map((p) => p.date);
+    const rawValues = all.slice(startIdx).map((p) => p.valor);
+    const trendValues = t.slice(startIdx);
 
-      const trendLabel = `Tendencia (EMA7)`;
+    const trendLabel = `Tendencia (EMA7)`;
 
-      return { diarios: d, trend: t, velocity: v, dates, rawValues, trendValues, trendLabel };
-    }, [pesos, timeframe]);
+    return {
+      diarios: d,
+      trend: t,
+      velocity: v,
+      dates,
+      rawValues,
+      trendValues,
+      trendLabel,
+    };
+  }, [pesos, timeframe]);
 
   const isEmpty = diarios.length < 2;
 
@@ -236,10 +262,14 @@ export function ChartPesoCorporal({
 
   // ─── Tooltip value formatters ─────────────────────────────
   const rawFormatter = (v: number | null) =>
-    v !== null ? `Pesaje Bruto: ${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })} kg` : "";
+    v !== null
+      ? `Pesaje Bruto: ${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })} kg`
+      : "";
 
   const trendFormatter = (v: number | null) =>
-    v !== null ? `Tendencia Real: ${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })} kg` : "";
+    v !== null
+      ? `Tendencia Real: ${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })} kg`
+      : "";
 
   return (
     <>
@@ -321,6 +351,7 @@ export function ChartPesoCorporal({
       ) : (
         <Box sx={{ width: "100%", height: 280 }}>
           <LineChart
+            margin={{ left: 0, bottom: 0 }}
             xAxis={[
               {
                 data: dates,

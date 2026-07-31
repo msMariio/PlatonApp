@@ -574,40 +574,65 @@ async function buildLocalSnapshot(): Promise<string> {
 /**
  * Convierte MensajeChat[] al formato contents[] de Gemini,
  * incluyendo functionCall y functionResponse cuando corresponda.
+ *
+ * REGLA CLAVE: Si el modelo generó varias functionCalls en una misma
+ * respuesta, Gemini las devuelve en un ÚNICO content con múltiples parts
+ * (cada una con su thought_signature). Almacenamos cada functionCall como
+ * un MensajeChat separado (para simplificar la UI), pero al reenviarlas
+ * a Gemini DEBEN ir agrupadas en un solo content. Esta función hace el
+ * merge de mensajes model consecutivos con functionCall respetando el
+ * orden de parts original (texto primero, luego functionCalls).
  */
 function mensajesToGeminiContents(mensajes: MensajeChat[]): GeminiContent[] {
-  return mensajes.map((m) => {
-    const parts: GeminiPart[] = [];
+  const contents: GeminiContent[] = [];
 
-    // Si el mensaje tiene functionCall, va como model con functionCall part
-    if (m.functionCall) {
-      const fcPart: GeminiPart = {
-        functionCall: {
-          name: m.functionCall.name,
-          args: m.functionCall.args,
-        },
-      };
-      // Incluir thought_signature si está presente (requerido por Gemini)
-      if (m.functionCall.thoughtSignature) {
-        (fcPart as GeminiFunctionCallPart).thought_signature =
-          m.functionCall.thoughtSignature;
-      }
-      parts.push(fcPart);
-      // También puede tener texto (la explicación previa del modelo)
+  for (let i = 0; i < mensajes.length; i++) {
+    const m = mensajes[i];
+
+    // ── Agrupar functionCalls consecutivos del modelo ────────────
+    if (m.role === "model" && m.functionCall) {
+      const mergedParts: GeminiPart[] = [];
+
+      // El texto viene del primer functionCall del turno (todos comparten el mismo texto)
       if (m.texto && m.texto.trim().length > 0) {
-        parts.push({ text: m.texto });
+        mergedParts.push({ text: m.texto });
       }
-    } else if (m.functionResponse) {
-      parts.push({ functionResponse: m.functionResponse });
-    } else if (m.texto && m.texto.trim().length > 0) {
-      parts.push({ text: m.texto });
-    }
 
-    return {
-      role: m.role,
-      parts,
-    };
-  });
+      // Recorrer todos los functionCalls consecutivos del modelo
+      while (i < mensajes.length && mensajes[i].role === "model" && mensajes[i].functionCall) {
+        const fcMsg = mensajes[i];
+        const fcPart: GeminiPart = {
+          functionCall: {
+            name: fcMsg.functionCall!.name,
+            args: fcMsg.functionCall!.args,
+          },
+        };
+        // Incluir thought_signature si está presente (requerido por Gemini)
+        if (fcMsg.functionCall!.thoughtSignature) {
+          (fcPart as GeminiFunctionCallPart).thought_signature =
+            fcMsg.functionCall!.thoughtSignature;
+        }
+        mergedParts.push(fcPart);
+        i++;
+      }
+      i--; // Retroceder uno porque el for hará i++
+
+      contents.push({ role: "model", parts: mergedParts });
+    } else if (m.functionResponse) {
+      contents.push({
+        role: m.role,
+        parts: [{ functionResponse: m.functionResponse }],
+      });
+    } else if (m.texto && m.texto.trim().length > 0) {
+      contents.push({
+        role: m.role,
+        parts: [{ text: m.texto }],
+      });
+    }
+    // Si el mensaje no tiene contenido relevante, se omite
+  }
+
+  return contents;
 }
 
 // ── Llamada a la API ─────────────────────────────────────────────────

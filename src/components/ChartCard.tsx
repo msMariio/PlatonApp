@@ -63,8 +63,8 @@ export function ChartCard({
   const isEmpty = yData.length < minPoints;
 
   return (
-    <Card>
-      <CardContent>
+    <Card sx={{ border: 0 }}>
+      <CardContent sx={{ p: 0 }}>
         <Stack
           direction="row"
           sx={{
@@ -91,7 +91,9 @@ export function ChartCard({
             color={color}
             yMin={yMin}
             yMax={yMax}
-            xScaleType={xScaleType as "band" | "point" | "linear" | "time" | undefined}
+            xScaleType={
+              xScaleType as "band" | "point" | "linear" | "time" | undefined
+            }
             xValueFormatter={xValueFormatter}
             xTickMinStep={xTickMinStep}
             xTickMaxStep={xTickMaxStep}

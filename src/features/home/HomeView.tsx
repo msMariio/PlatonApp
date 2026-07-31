@@ -48,7 +48,10 @@ import {
   getLogsDeHoy,
   DIAS_SEMANA,
 } from "./data";
-import { actualizarLogEntrenamiento, calcularVolumenTotal } from "../training-logger/data";
+import {
+  actualizarLogEntrenamiento,
+  calcularVolumenTotal,
+} from "../training-logger/data";
 
 const TIPO_LABEL: Record<TipoEjercicio, string> = {
   fuerza: "FUERZA",
@@ -802,9 +805,9 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
                     display: "flex",
                     flexDirection: "column",
                     gap: 1,
-                    px: 1,
-                    py: 2,
-                    border: 1,
+                    px: 0.5,
+                    py: 1,
+                    // border: 1,
                     borderColor: dia === diaSemana ? "primary.main" : "divider",
                     bgcolor:
                       dia === diaSemana
@@ -909,90 +912,114 @@ export function HomeView({ onStartTraining }: HomeViewProps) {
             )}
           </Box>
           <Collapse in={historialExpandido}>
-          {logsRecientes.length === 0 ? (
-            <EmptyStateCard height={120}>
-              [ NO HAY ENTRENAMIENTOS REGISTRADOS ]
-            </EmptyStateCard>
-          ) : (
-            <Stack spacing={1}>
-              {logsRecientes.map((log) => {
-                const volLog = calcularVolumenTotal(log.ejercicios);
-                const cardioLog = calcularCardioTotales(log);
-                return (
-                <Box
-                  key={log.id}
-                  onClick={() => onStartTraining(log.rutinaId, log.id)}
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    p: 1.5,
-                    border: 1,
-                    borderColor: "divider",
-                    cursor: "pointer",
-                    "&:hover": { bgcolor: "action.hover" },
-                    transition: "background-color 0.15s",
-                  }}
-                >
-                  <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                      {getNombreRutinaFromLog(log)}
-                    </Typography>
-                    <Box sx={{ display: "flex", gap: 1.5, mt: 0.25, flexWrap: "wrap" }}>
-                      {volLog > 0 && (
-                        <Typography
-                          variant="caption"
-                          color="primary.main"
-                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
-                        >
-                          {volLog.toLocaleString("es-ES")} kg
-                        </Typography>
-                      )}
-                      {cardioLog.minutos > 0 && (
-                        <Typography
-                          variant="caption"
-                          color="primary.main"
-                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
-                        >
-                          {cardioLog.minutos.toLocaleString("es-ES")} min
-                        </Typography>
-                      )}
-                      {cardioLog.distancia > 0 && (
-                        <Typography
-                          variant="caption"
-                          color="primary.main"
-                          sx={{ fontFamily: '"Courier New", Courier, monospace', letterSpacing: "0.03em" }}
-                        >
-                          {cardioLog.distancia.toLocaleString("es-ES")} km
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(log.fecha).toLocaleDateString("es-ES")}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStartTraining(log.rutinaId, log.id);
-                      }}
+            {logsRecientes.length === 0 ? (
+              <EmptyStateCard height={120}>
+                [ NO HAY ENTRENAMIENTOS REGISTRADOS ]
+              </EmptyStateCard>
+            ) : (
+              <Stack spacing={1}>
+                {logsRecientes.map((log) => {
+                  const volLog = calcularVolumenTotal(log.ejercicios);
+                  const cardioLog = calcularCardioTotales(log);
+                  return (
+                    <Box
+                      key={log.id}
+                      onClick={() => onStartTraining(log.rutinaId, log.id)}
                       sx={{
-                        borderRadius: 0,
-                        color: "text.secondary",
-                        "&:hover": { color: "primary.main" },
-                        touchAction: "manipulation",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        p: 1.5,
+                        border: 1,
+                        borderColor: "divider",
+                        cursor: "pointer",
+                        "&:hover": { bgcolor: "action.hover" },
+                        transition: "background-color 0.15s",
                       }}
-                      aria-label="Editar entrenamiento"
                     >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </Box>
-              )})}
-            </Stack>
-          )}
+                      <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                          {getNombreRutinaFromLog(log)}
+                        </Typography>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            gap: 1.5,
+                            mt: 0.25,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {volLog > 0 && (
+                            <Typography
+                              variant="caption"
+                              color="primary.main"
+                              sx={{
+                                fontFamily: '"Courier New", Courier, monospace',
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {volLog.toLocaleString("es-ES")} kg
+                            </Typography>
+                          )}
+                          {cardioLog.minutos > 0 && (
+                            <Typography
+                              variant="caption"
+                              color="primary.main"
+                              sx={{
+                                fontFamily: '"Courier New", Courier, monospace',
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {cardioLog.minutos.toLocaleString("es-ES")} min
+                            </Typography>
+                          )}
+                          {cardioLog.distancia > 0 && (
+                            <Typography
+                              variant="caption"
+                              color="primary.main"
+                              sx={{
+                                fontFamily: '"Courier New", Courier, monospace',
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {cardioLog.distancia.toLocaleString("es-ES")} km
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(log.fecha).toLocaleDateString("es-ES")}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onStartTraining(log.rutinaId, log.id);
+                          }}
+                          sx={{
+                            borderRadius: 0,
+                            color: "text.secondary",
+                            "&:hover": { color: "primary.main" },
+                            touchAction: "manipulation",
+                          }}
+                          aria-label="Editar entrenamiento"
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            )}
           </Collapse>
         </CardContent>
       </Card>
