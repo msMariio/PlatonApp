@@ -110,7 +110,7 @@ export function MetricsHub() {
   const [registrosExpanded, setRegistrosExpanded] = useState(false);
 
   // ─── Tab navigation: fuerza vs peso ──────────────────────
-  const [tab, setTab] = useState<"fuerza" | "peso" | "musculos">("fuerza");
+  const [tab, setTab] = useState<"fuerza" | "peso" | "musculos">("musculos");
 
   const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
   const pesosFiltrados = filtrarPesos(pesos, timeframePeso);
@@ -212,6 +212,25 @@ export function MetricsHub() {
       }}
     >
       <Button
+        onClick={() => setTab("musculos")}
+        disableElevation
+        aria-pressed={tab === "musculos"}
+        sx={{
+          flex: 1,
+          py: 0.75,
+          borderRadius: 0,
+          fontSize: "0.8rem",
+          fontWeight: tab === "musculos" ? 700 : 400,
+          bgcolor: tab === "musculos" ? "primary.main" : "transparent",
+          color: tab === "musculos" ? "primary.contrastText" : "text.secondary",
+          border: "none",
+          transition: "all 0.15s ease",
+          "&:hover": { bgcolor: tab === "musculos" ? "primary.main" : "action.hover" },
+        }}
+      >
+        MÚSCULOS
+      </Button>
+      <Button
         onClick={() => setTab("fuerza")}
         disableElevation
         aria-pressed={tab === "fuerza"}
@@ -252,25 +271,6 @@ export function MetricsHub() {
         }}
       >
         PESO
-      </Button>
-      <Button
-        onClick={() => setTab("musculos")}
-        disableElevation
-        aria-pressed={tab === "musculos"}
-        sx={{
-          flex: 1,
-          py: 0.75,
-          borderRadius: 0,
-          fontSize: "0.8rem",
-          fontWeight: tab === "musculos" ? 700 : 400,
-          bgcolor: tab === "musculos" ? "primary.main" : "transparent",
-          color: tab === "musculos" ? "primary.contrastText" : "text.secondary",
-          border: "none",
-          transition: "all 0.15s ease",
-          "&:hover": { bgcolor: tab === "musculos" ? "primary.main" : "action.hover" },
-        }}
-      >
-        MÚSCULOS
       </Button>
     </Box>
   );

@@ -160,7 +160,7 @@ main.tsx
 ```text
 tab 0 → HomeView
  tab 1 → RutinasView
- tab 2 → MetricsHub (fuerza, peso y músculos)
+ tab 2 → MetricsHub (músculos, fuerza y peso)
  tab 3 → CoachView
  tab 4 → SettingsView
 ```
@@ -651,8 +651,24 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 - **Cambio:** se añadieron grupos anatómicos específicos y una pestaña de métricas musculares con volumen semanal, series efectivas, frecuencia, evolución de ocho semanas, comparación con la semana anterior y alertas de abandono/sobrecarga.
 - **Motivación:** complementar la analítica por ejercicio con una visión de equilibrio y distribución del entrenamiento.
 - **Áreas afectadas:** `src/core/db.ts`, `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx`, `src/features/metrics/MetricsHub.tsx`, diálogos/catálogo de ejercicios y este README.
-- **Contrato nuevo:** `GrupoMuscular` contiene nueve grupos anatómicos; ejercicios legacy ambiguos se almacenan sin grupo hasta reclasificación manual. Una serie efectiva es una serie completada con reps o peso; la sobrecarga se marca con un aumento de al menos 50% en series o volumen frente a la semana anterior.
+- **Contrato nuevo:** `GrupoMuscular` contiene nueve grupos anatómicos; ejercicios legacy ambiguos se almacenan sin grupo hasta reclasificación manual. Una serie efectiva es una serie completada con reps o peso; la sobrecarga se marca con un aumento de al menos 50% en series o volumen frente a la semana anterior. La UI clasifica las series en `INACTIVO`, `BAJO`, `MEDIO`, `ÓPTIMO` y `ALTO` mediante `clasificarSeriesMusculares()` y muestra series como métrica principal.
 - **Migración/verificación:** migración Dexie v11; `npm run build` correcto.
+
+### 2026-09-15 — Frecuencia promedio en analítica muscular
+
+- **Cambio:** el KPI de frecuencia dejó de sumar días de todos los grupos y ahora muestra la media de días por semana únicamente entre los músculos activos, con formato `0.0x`.
+- **Motivación:** representar la frecuencia media real de los músculos trabajados sin que los grupos inactivos reduzcan artificialmente el indicador.
+- **Áreas afectadas:** `src/features/analytics/GrupoMuscularAnalyticsView.tsx` y este README.
+- **Contrato nuevo:** `gruposActivos` son los grupos con al menos una serie efectiva en la semana actual; `frecuenciaPromedio = sumaDiasTotales / gruposActivos.length`, o `0` si no hay grupos activos.
+- **Migración/verificación:** no requiere migración de IndexedDB; pendiente verificar con `npm run build`.
+
+### 2026-09-15 — Jerarquía visual de analítica muscular
+
+- **Cambio:** se priorizaron las series efectivas totales, se añadieron barras de progreso y badges de rango por grupo con colores semánticos (`INACTIVO` gris, `BAJO` rojo, `MEDIO` amarillo, `ÓPTIMO` verde y `ALTO` morado), se sustituyó el delta de tonelaje por el delta de series y se incorporó un selector 50/50 de series/tonelaje para la evolución semanal.
+- **Motivación:** hacer más legible el estado de cada grupo y centrar la pantalla en una señal de volumen de entrenamiento más comparable.
+- **Áreas afectadas:** `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx` y este README.
+- **Contrato nuevo:** cero series se muestra como `INACTIVO` en gris; los rangos activos son `1–5` bajo, `6–9` medio, `10–20` óptimo y `>20` alto; el progreso visual se limita a 20 series.
+- **Migración/verificación:** no requiere migración de IndexedDB; pendiente verificar con `npm run build`.
 
 ### 2026-09-15 — Registro automático de récords personales
 

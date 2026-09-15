@@ -48,6 +48,31 @@ export interface MetricaGrupoMuscular {
   frecuencia: number;
 }
 
+export type EstadoSeriesMusculares = "INACTIVO" | "BAJO" | "MEDIO" | "OPTIMO" | "ALTO";
+
+export interface ClasificacionSeriesMusculares {
+  estado: EstadoSeriesMusculares;
+  badge: string;
+  rangoMax: number;
+}
+
+/** Clasifica las series efectivas semanales según los rangos de referencia. */
+export function clasificarSeriesMusculares(seriesEfectivas: number): ClasificacionSeriesMusculares {
+  if (seriesEfectivas === 0) {
+    return { estado: "INACTIVO", badge: "[ INACTIVO ]", rangoMax: 20 };
+  }
+  if (seriesEfectivas < 6) {
+    return { estado: "BAJO", badge: "[ BAJO ]", rangoMax: 20 };
+  }
+  if (seriesEfectivas < 10) {
+    return { estado: "MEDIO", badge: "[ MEDIO ]", rangoMax: 20 };
+  }
+  if (seriesEfectivas <= 20) {
+    return { estado: "OPTIMO", badge: "[ ÓPTIMO ]", rangoMax: 20 };
+  }
+  return { estado: "ALTO", badge: "[ EXCESO ⚠️ ]", rangoMax: 25 };
+}
+
 export interface SemanaGrupoMuscular {
   inicio: Date;
   fin: Date;
