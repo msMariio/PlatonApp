@@ -377,7 +377,7 @@ Deben revisarse juntos cuando se cambie el agente:
 2. `src/features/coach-ia/services/geminiService.ts`: snapshot, API y serialización.
 3. `src/features/coach-ia/services/toolDefinitions.ts`: tipos y schemas.
 4. `src/features/coach-ia/services/toolExecutor.ts`: autoridad real de escritura.
-5. `CoachView.tsx` y `ToolProposalCard.tsx`: confirmación y UI.
+5. `CoachView.tsx` y `ToolProposalCard.tsx`: confirmación y UI. `ToolProposalCard` consulta el estado local para previsualizar cambios antes/después en tools de edición.
 
 ### Prompt de sistema
 
@@ -635,6 +635,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-15 — Previsualización rica de propuestas IA
+
+- **Cambio:** `ToolProposalCard` añade tarjetas específicas para editar rutinas, editar entrenamientos, registrar/editar peso y reordenar rutinas, con nombres resueltos desde IndexedDB y comparativas antes/después.
+- **Motivación:** hacer comprensibles las consecuencias de una acción antes de confirmarla y evitar que el usuario tenga que interpretar JSON.
+- **Áreas afectadas:** `src/features/coach-ia/components/ToolProposalCard.tsx` y este README.
+- **Contrato nuevo:** la UI puede consultar el estado local actual para presentar el estado anterior; la confirmación y ejecución siguen siendo las del executor y no se realizan escrituras desde la tarjeta.
+- **Verificación:** `npm run build` correcto; `npm run lint` mantiene los errores preexistentes documentados.
 
 ### 2026-09-15 — Contrato IA y ejecución atómica
 

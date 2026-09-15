@@ -1,11 +1,17 @@
 import { Box, Typography, Button, alpha } from "@mui/material";
 import ReactMarkdown from "react-markdown";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db, type Ejercicio, type LogEntrenamiento, type PesoDiario, type Rutina, type Serie } from "../../../core/db";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import ScaleIcon from "@mui/icons-material/Scale";
+import SwapVertIcon from "@mui/icons-material/SwapVert";
+import EventNoteIcon from "@mui/icons-material/EventNote";
 import type { FunctionCallProposal } from "../services/geminiService";
 
 type Props = {
@@ -22,6 +28,11 @@ const toolIcons: Record<string, React.ReactNode> = {
   crear_ejercicio: <FitnessCenterIcon sx={{ fontSize: 14 }} />,
   crear_rutina: <ListAltIcon sx={{ fontSize: 14 }} />,
   actualizar_planificacion_semanal: <CalendarMonthIcon sx={{ fontSize: 14 }} />,
+  editar_rutina: <EditNoteIcon sx={{ fontSize: 14 }} />,
+  editar_entrenamiento: <EventNoteIcon sx={{ fontSize: 14 }} />,
+  registrar_peso: <ScaleIcon sx={{ fontSize: 14 }} />,
+  editar_peso: <ScaleIcon sx={{ fontSize: 14 }} />,
+  reordenar_rutina: <SwapVertIcon sx={{ fontSize: 14 }} />,
 };
 
 const toolLabels: Record<string, string> = {
@@ -29,12 +40,230 @@ const toolLabels: Record<string, string> = {
   crear_ejercicio: "CREAR EJERCICIO",
   crear_rutina: "CREAR RUTINA",
   actualizar_planificacion_semanal: "PLANIFICAR SEMANA",
+  editar_rutina: "EDITAR RUTINA",
+  editar_entrenamiento: "EDITAR ENTRENAMIENTO",
+  registrar_peso: "REGISTRAR PESO",
+  editar_peso: "EDITAR PESO",
+  reordenar_rutina: "REORDENAR RUTINA",
 };
 
-/**
- * Renderiza los argumentos de una propuesta de forma legible.
- */
-function renderArgs(name: string, args: Record<string, unknown>): React.ReactNode {
+/** Contexto local utilizado para convertir argumentos en cambios antes/después. */
+type ProposalContext = {
+  rutinas: Rutina[];
+  ejercicios: Ejercicio[];
+  logs: LogEntrenamiento[];
+  pesos: PesoDiario[];
+};
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function findRutina(args: Record<string, unknown>, rutinas: Rutina[]): Rutina | undefined {
+  const id = typeof args.rutinaId === "string" ? args.rutinaId : undefined;
+  const nombre = normalizeText(args.rutinaNombre);
+  return rutinas.find((rutina) =>
+    (id ? rutina.id === id : false) ||
+    (nombre ? normalizeText(rutina.nombre) === nombre : false),
+  );
+}
+
+function findEjercicio(ref: Record<string, unknown>, ejercicios: Ejercicio[]): Ejercicio | undefined {
+  const id = typeof ref.ejercicioId === "string" ? ref.ejercicioId : undefined;
+  const nombre = normalizeText(ref.ejercicioNombre);
+  return ejercicios.find((ejercicio) =>
+    (id ? ejercicio.id === id : false) ||
+    (nombre ? normalizeText(ejercicio.nombre) === nombre : false),
+  );
+}
+
+function ejercicioNombre(ref: Record<string, unknown>, ejercicios: Ejercicio[]): string {
+  return findEjercicio(ref, ejercicios)?.nombre ?? String(ref.ejercicioNombre ?? ref.ejercicioId ?? "Ejercicio desconocido");
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function formatNumber(value: unknown): string {
+  return typeof value === "number" ? String(value) : "—";
+}
+
+type RealSeriesLike = {
+  peso?: unknown;
+  reps?: unknown;
+  duracionMinutos?: unknown;
+  distanciaKm?: unknown;
+};
+
+function formatTargetSeries(series: Serie[]): string {
+  if (series.length === 0) return "sin series";
+  const first = series[0];
+  if (first.duracionObjetivoMinutos != null) {
+    return `${series.length} × ${formatNumber(first.duracionObjetivoMinutos)} min`;
+  }
+  if (first.distanciaObjetivoKm != null) {
+    return `${series.length} × ${formatNumber(first.distanciaObjetivoKm)} km`;
+  }
+  const reps = first.repsMin == null
+    ? "—"
+    : first.repsMin === first.repsMax
+      ? formatNumber(first.repsMin)
+      : `${formatNumber(first.repsMin)}-${formatNumber(first.repsMax)}`;
+  const peso = first.pesoObjetivo != null ? ` @ ${formatNumber(first.pesoObjetivo)} kg` : "";
+  return `${series.length} × ${reps}${peso}`;
+}
+
+function formatRealSeries(series: RealSeriesLike[]): string {
+  if (series.length === 0) return "sin series";
+  const first = series[0];
+  if (first.duracionMinutos != null) return `${series.length} × ${formatNumber(first.duracionMinutos)} min`;
+  if (first.distanciaKm != null) return `${series.length} × ${formatNumber(first.distanciaKm)} km`;
+  const reps = first.reps != null ? formatNumber(first.reps) : "—";
+  const peso = first.peso != null ? ` @ ${formatNumber(first.peso)} kg` : "";
+  return `${series.length} × ${reps}${peso}`;
+}
+
+function ChangeRow({ label, before, after }: { label?: string; before: string; after: string }) {
+  return (
+    <Box sx={{ mt: 0.75, pl: 1, borderLeft: 2, borderColor: "divider" }}>
+      {label && <Typography variant="caption" sx={{ display: "block", fontWeight: "bold", color: "text.primary" }}>{label}</Typography>}
+      <Typography variant="caption" sx={{ display: "block", color: "text.secondary" }}>
+        <Box component="span" sx={{ color: "error.main", fontWeight: "bold" }}>Antes:</Box> {before}
+      </Typography>
+      <Typography variant="caption" sx={{ display: "block", color: "text.secondary" }}>
+        <Box component="span" sx={{ color: "success.main", fontWeight: "bold" }}>Después:</Box> {after}
+      </Typography>
+    </Box>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Typography variant="caption" color="text.secondary" sx={{ display: "block", letterSpacing: "0.05em", mt: 1, mb: 0.25 }}>{children}</Typography>;
+}
+
+function renderRoutineEdit(args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
+  const rutina = findRutina(args, context.rutinas);
+  const modificaciones = (args.ejerciciosModificar as Array<Record<string, unknown>> | undefined) ?? [];
+  const agregar = (args.ejerciciosAgregar as Array<Record<string, unknown>> | undefined) ?? [];
+  const quitar = (args.ejerciciosQuitar as Array<Record<string, unknown>> | undefined) ?? [];
+
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography variant="caption" sx={{ fontWeight: "bold", display: "block" }}>
+        {rutina?.nombre ?? String(args.rutinaNombre ?? args.rutinaId ?? "Rutina")}
+      </Typography>
+      {args.nombre !== undefined && rutina && <ChangeRow before={rutina.nombre} after={String(args.nombre)} />}
+      {args.descripcion !== undefined && rutina && <ChangeRow label="DESCRIPCIÓN" before={rutina.descripcion || "—"} after={String(args.descripcion)} />}
+      {modificaciones.length > 0 && (
+        <>
+          <SectionTitle>CAMBIOS DE EJERCICIOS</SectionTitle>
+          {modificaciones.map((mod, index) => {
+            const nombre = ejercicioNombre(mod, context.ejercicios);
+            const actual = rutina?.ejercicios.find((ej) => ej.ejercicioId === findEjercicio(mod, context.ejercicios)?.id);
+            const before = actual ? formatTargetSeries(actual.series) : "no encontrado";
+            const afterSeries = Math.max(1, Number(mod.series ?? actual?.series.length ?? 1));
+            const first = actual?.series[0] ?? {};
+            const after: Serie = {
+              ...first,
+              repsMin: asNumber(mod.repsMin) ?? first.repsMin,
+              repsMax: asNumber(mod.repsMax) ?? first.repsMax,
+              pesoObjetivo: asNumber(mod.pesoObjetivo) ?? first.pesoObjetivo,
+              rpeObjetivo: asNumber(mod.rpeObjetivo) ?? first.rpeObjetivo,
+              duracionObjetivoMinutos: asNumber(mod.duracionObjetivoMinutos) ?? first.duracionObjetivoMinutos,
+              distanciaObjetivoKm: asNumber(mod.distanciaObjetivoKm) ?? first.distanciaObjetivoKm,
+            };
+            return <ChangeRow key={index} label={nombre} before={before} after={formatTargetSeries(Array.from({ length: afterSeries }, () => after))} />;
+          })}
+        </>
+      )}
+      {agregar.length > 0 && (
+        <>
+          <SectionTitle>EJERCICIOS AÑADIDOS</SectionTitle>
+          {agregar.map((ej, index) => <ChangeRow key={index} label={ejercicioNombre(ej, context.ejercicios)} before="—" after={formatTargetSeries(Array.from({ length: Math.max(1, Number(ej.series ?? 1)) }, () => ({ repsMin: ej.repsMin as number | undefined, repsMax: ej.repsMax as number | undefined, pesoObjetivo: ej.pesoObjetivo as number | undefined, duracionObjetivoMinutos: ej.duracionObjetivoMinutos as number | undefined, distanciaObjetivoKm: ej.distanciaObjetivoKm as number | undefined })))} />)}
+        </>
+      )}
+      {quitar.length > 0 && (
+        <>
+          <SectionTitle>EJERCICIOS QUITADOS</SectionTitle>
+          {quitar.map((ej, index) => {
+            const actual = rutina?.ejercicios.find((item) => item.ejercicioId === findEjercicio(ej, context.ejercicios)?.id);
+            return <ChangeRow key={index} label={ejercicioNombre(ej, context.ejercicios)} before={actual ? formatTargetSeries(actual.series) : "presente"} after="—" />;
+          })}
+        </>
+      )}
+    </Box>
+  );
+}
+
+function renderWorkoutEdit(args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
+  const fecha = String(args.fecha ?? "");
+  const rutinaNombre = normalizeText(args.rutinaNombre);
+  const log = context.logs.find((item) => item.fecha.slice(0, 10) === fecha && (!rutinaNombre || normalizeText(item.rutinaSnapshot) === rutinaNombre || item.rutinaId === args.rutinaId));
+  const modificaciones = (args.ejerciciosModificar as Array<Record<string, unknown>> | undefined) ?? [];
+  const agregar = (args.ejerciciosAgregar as Array<Record<string, unknown>> | undefined) ?? [];
+  const quitar = (args.ejerciciosQuitar as Array<Record<string, unknown>> | undefined) ?? [];
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography variant="caption" sx={{ fontWeight: "bold", display: "block" }}>{log?.rutinaSnapshot ?? String(args.rutinaNombre ?? args.rutinaId ?? "Entrenamiento")} · {fecha}</Typography>
+      {modificaciones.map((mod, index) => {
+        const id = findEjercicio(mod, context.ejercicios)?.id;
+        const actual = log?.ejercicios.find((ej) => ej.ejercicioId === id);
+        const series = (mod.series as Array<Record<string, unknown>> | undefined) ?? [];
+        const before = actual ? formatRealSeries(actual.series) : "no encontrado";
+        const afterSeries = actual?.series.map((serie, serieIndex) => {
+          const change = series.find((item) => item.serieIdx === serieIndex);
+          return change ? { ...serie, ...change } : serie;
+        }) ?? [];
+        return <ChangeRow key={index} label={ejercicioNombre(mod, context.ejercicios)} before={before} after={formatRealSeries(afterSeries)} />;
+      })}
+      {agregar.map((ej, index) => <ChangeRow key={`a-${index}`} label={ejercicioNombre(ej, context.ejercicios)} before="—" after={formatRealSeries((ej.series as Array<RealSeriesLike> | undefined) ?? [])} />)}
+      {quitar.map((ej, index) => {
+        const id = findEjercicio(ej, context.ejercicios)?.id;
+        const actual = log?.ejercicios.find((item) => item.ejercicioId === id);
+        return <ChangeRow key={`q-${index}`} label={ejercicioNombre(ej, context.ejercicios)} before={actual ? formatRealSeries(actual.series) : "presente"} after="—" />;
+      })}
+    </Box>
+  );
+}
+
+function renderReorder(args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
+  const rutina = findRutina(args, context.rutinas);
+  const orden = (args.ordenEjercicios as Array<Record<string, unknown>> | undefined) ?? [];
+  const anterior = rutina?.ejercicios
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((item) => context.ejercicios.find((ej) => ej.id === item.ejercicioId)?.nombre ?? item.ejercicioId) ?? [];
+  const nuevo = orden.map((item) => ejercicioNombre(item, context.ejercicios));
+
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography variant="caption" sx={{ display: "block", fontWeight: "bold" }}>
+        {rutina?.nombre ?? String(args.rutinaNombre ?? args.rutinaId ?? "Rutina")}
+      </Typography>
+      <ChangeRow
+        label="ORDEN DE EJERCICIOS"
+        before={anterior.length > 0 ? anterior.join(" → ") : "no disponible"}
+        after={nuevo.length > 0 ? nuevo.join(" → ") : "sin cambios"}
+      />
+    </Box>
+  );
+}
+
+function renderWeight(name: "registrar_peso" | "editar_peso", args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
+  const fecha = String(args.fecha ?? "hoy");
+  const hora = typeof args.hora === "string" ? ` · ${args.hora}` : "";
+  if (name === "registrar_peso") {
+    return <ChangeRow label={`PESO · ${fecha}${hora}`} before="—" after={`${formatNumber(args.valor)} kg`} />;
+  }
+
+  const registro = context.pesos.find((peso) =>
+    peso.fecha === fecha && (!args.hora || peso.hora === args.hora),
+  );
+  return <ChangeRow label={`PESO · ${fecha}${hora}`} before={registro ? `${registro.valor} kg` : "registro no encontrado"} after={`${formatNumber(args.nuevoValor)} kg`} />;
+}
+
+function renderArgs(name: string, args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
   switch (name) {
     case "crear_carpeta":
       return (
@@ -168,6 +397,19 @@ function renderArgs(name: string, args: Record<string, unknown>): React.ReactNod
       );
     }
 
+    case "editar_rutina":
+      return renderRoutineEdit(args, context);
+
+    case "editar_entrenamiento":
+      return renderWorkoutEdit(args, context);
+
+    case "registrar_peso":
+    case "editar_peso":
+      return renderWeight(name, args, context);
+
+    case "reordenar_rutina":
+      return renderReorder(args, context);
+
     case "actualizar_planificacion_semanal": {
       const dias = args.dias as Record<string, string | null> | undefined;
       if (!dias) return null;
@@ -261,6 +503,19 @@ export function ToolProposalCard({
   onCancel,
   disabled,
 }: Props) {
+  const context = useLiveQuery<ProposalContext>(
+    async () => {
+      const [rutinas, ejercicios, logs, pesos] = await Promise.all([
+        db.rutinas.toArray(),
+        db.ejercicios.toArray(),
+        db.logsEntrenamientos.toArray(),
+        db.pesos.toArray(),
+      ]);
+      return { rutinas, ejercicios, logs, pesos };
+    },
+    [],
+  ) ?? { rutinas: [], ejercicios: [], logs: [], pesos: [] };
+
   return (
     <Box
       sx={{
@@ -432,7 +687,7 @@ export function ToolProposalCard({
           </Box>
 
           {/* Tool args */}
-          {renderArgs(proposal.name, proposal.args)}
+          {renderArgs(proposal.name, proposal.args, context)}
         </Box>
       ))}
 
