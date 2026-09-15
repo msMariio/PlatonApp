@@ -30,6 +30,7 @@ import { AppTextField } from "../../components/AppTextField";
 import { SelectEjercicioDialog } from "../rutinas/components/SelectEjercicioDialog";
 import { EjercicioLoggerCard } from "./components/EjercicioLoggerCard";
 import { OverloadDetectionModal } from "./components/OverloadDetectionModal";
+import { PersonalRecordsModal } from "./components/PersonalRecordsModal";
 import {
   compareWorkoutWithTemplate,
   actualizarTemplateConMejoras,
@@ -43,6 +44,8 @@ import {
   buildEjerciciosRealesDesdeRutina,
   getPlaceholderSerie,
   calcularVolumenTotal,
+  detectarRecordsPersonales,
+  type RecordPersonal,
   CUSTOM_LIBRE_ID,
 } from "./data";
 
@@ -86,6 +89,8 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showOverloadModal, setShowOverloadModal] = useState(false);
   const [overloadDiff, setOverloadDiff] = useState<EjercicioMejora[]>([]);
+  const [personalRecords, setPersonalRecords] = useState<RecordPersonal[]>([]);
+  const [showPersonalRecords, setShowPersonalRecords] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
 
   // Snapshot of the initial state to detect unsaved changes
@@ -198,6 +203,12 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   const ejecutarGuardadoSimple = useCallback(async () => {
     if (!rutina) return;
     setGuardando(true);
+    let records: RecordPersonal[] = [];
+    try {
+      records = await detectarRecordsPersonales(ejercicios, logId);
+    } catch {
+      // El registro del entrenamiento no debe bloquearse por un fallo analítico.
+    }
     const fechaISO = new Date(fecha + "T12:00:00").toISOString();
     if (isEditMode && logId !== undefined) {
       await actualizarLogEntrenamiento(logId, ejercicios, notas, fechaISO);
@@ -212,7 +223,12 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     }
     initialSnapshot.current = JSON.stringify({ ejercicios, notas, fecha });
     setGuardando(false);
-    onSaved?.();
+    if (records.length > 0) {
+      setPersonalRecords(records);
+      setShowPersonalRecords(true);
+    } else {
+      onSaved?.();
+    }
   }, [
     rutina,
     fecha,
@@ -450,6 +466,16 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         onSkipUpdate={handleSkipUpdate}
         onClose={() => setShowOverloadModal(false)}
         disabled={guardando}
+      />
+
+      <PersonalRecordsModal
+        open={showPersonalRecords}
+        records={personalRecords}
+        nombresEjercicios={catalogoLookup.size > 0 ? new Map([...catalogoLookup].map(([id, ejercicio]) => [id, ejercicio.nombre])) : new Map()}
+        onClose={() => {
+          setShowPersonalRecords(false);
+          onSaved?.();
+        }}
       />
 
       {/* Unsaved changes confirmation dialog */}

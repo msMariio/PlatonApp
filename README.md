@@ -51,6 +51,7 @@ Si una rutina o ejercicio está referenciado por el historial, se archiva en vez
 - Al completar una serie, rellena campos vacíos desde el placeholder.
 - Detecta aumentos de peso, repeticiones, duración, distancia y series extra.
 - Pregunta si se deben actualizar los objetivos de la plantilla.
+- Al guardar, detecta y muestra récords personales de peso, e1RM, repeticiones con la misma carga, volumen, duración, distancia y ritmo.
 - Protege la salida accidental con cambios sin guardar.
 
 ### Métricas
@@ -210,7 +211,8 @@ Archivos clave:
 - `src/core/backup.ts`: export/import atómico.
 - `src/core/ia-prompts.ts`: prompt completo del coach.
 - `src/core/theme.tsx`: tema.
-- `src/features/training-logger/data.ts`: logs, placeholders y volumen.
+- `src/features/training-logger/data.ts`: logs, placeholders, volumen y detección de récords personales.
+- `src/features/training-logger/components/PersonalRecordsModal.tsx`: resumen de récords tras guardar.
 - `src/features/training-logger/utils/compareWorkoutWithTemplate.ts`: progresión.
 - `src/features/coach-ia/CoachView.tsx`: chat y confirmaciones.
 - `src/features/coach-ia/services/geminiService.ts`: snapshot, API y serialización.
@@ -349,7 +351,8 @@ RUTINAS
 6. Calcula volumen.
 7. Compara con plantilla.
 8. Ofrece actualizar plantilla o registrar solo la sesión.
-9. Guarda en `logsEntrenamientos`.
+9. Detecta récords personales comparando cada ejercicio con todo su historial.
+10. Guarda en `logsEntrenamientos` y muestra los eventos detectados.
 
 La actualización de plantilla conserva el máximo anterior/real y añade series extra como objetivos.
 
@@ -635,6 +638,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-15 — Registro automático de récords personales
+
+- **Cambio:** al guardar un entrenamiento, se comparan las series completadas con todo el historial del ejercicio y se muestra un resumen de nuevos máximos de peso, e1RM, repeticiones con la misma carga, volumen, duración, distancia y ritmo.
+- **Motivación:** convertir cada sesión en una señal de progreso visible, complementaria a las gráficas.
+- **Áreas afectadas:** `src/features/training-logger/data.ts`, `src/features/training-logger/TrainingLoggerView.tsx`, `src/features/training-logger/components/PersonalRecordsModal.tsx` y este README.
+- **Contrato nuevo:** `detectarRecordsPersonales()` calcula récords en memoria sin añadir campos persistidos; el historial se compara por ejercicio, incluyendo sesiones de otras rutinas y entrenamientos libres. En edición se excluye el log actual.
+- **Migración/verificación:** no requiere migración de IndexedDB; `npm run build` correcto.
 
 ### 2026-09-15 — Previsualización rica de propuestas IA
 
