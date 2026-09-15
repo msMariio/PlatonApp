@@ -566,10 +566,21 @@ async function ejecutarActualizarPlanificacionSemanal(
 }
 
 /**
+ * Fecha actual del sistema (formato YYYY-MM-DD), usada solo como último recurso
+ * cuando ni el agente ni el usuario especifican una fecha.
+ * En flujos normales, la fecha por defecto debe venir de FECHA_ACTUAL del prompt;
+ * esta función existe para mantener funcionalidad legacy mientras se consolida
+ * el uso de fechaDefault.
+ */
+function fechaYHoraActualDelSistema() {
+  const ahora = new Date();
+  const fecha = ahora.toISOString().slice(0, 10);
+  const hora = ahora.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return { fecha, hora };
+}
+
+/**
  * Hora actual del sistema (solo para derivar hora cuando fecha ya está dada).
- * En flujos normales, la fecha por defecto debe venir de FECHA_ACTUAL del prompt,
- * no de new Date(). La función de abajo se usa solo para la hora cuando la fecha
- * ya fue decidida.
  */
 function horaActualDelSistema() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
