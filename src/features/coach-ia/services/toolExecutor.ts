@@ -63,16 +63,8 @@ async function resolveEjercicio(
       .filter((e) => e.nombre.toLowerCase() === ejercicioNombre!.toLowerCase())
       .first();
     if (porNombre) return porNombre.id;
-    // Crear ejercicio nuevo con valores por defecto
-    const id = uid();
-    await db.ejercicios.add({
-      id,
-      nombre: ejercicioNombre,
-      grupoMuscular: "fullbody",
-      tipo: "fuerza",
-    });
-    return id;
   }
+  // NO crear ejercicios en silencio: el agente debe usar crear_ejercicio explícitamente.
   return undefined;
 }
 
@@ -488,8 +480,38 @@ async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
     }),
   );
 
-  // Filtrar ejercicios sin resolver (no debería pasar porque los creamos)
+  // Filtrar ejercicios sin resolver
   const ejerciciosValidos = ejerciciosResueltos.filter((e) => e.resolvedId);
+  if (ejerciciosValidos.length === 0) {
+    throw new Error(
+      `No se pudo resolver ningún ejercicio de la rutina "${args.nombre}". ` +
+      "Asegúrate de indicar ejercicioId o ejercicioNombre válidos (o crea los ejercicios antes con crear_ejercicio).",
+    );
+  }
+
+  // Validar que ejercicios de fuerza/calistenia tengan reps y peso objetivo
+  // (tipo se deduce del catálogo; si el ejercicio no existe en catálogo, se usa fuerza por defecto)
+  const ejerciciosConTipo = await Promise.all(
+    ejerciciosValidos.map(async (ej) => {
+      const cat = await db.ejercicios.get(ej.resolvedId!);
+      return {
+        ...ej,
+        tipo: cat?.tipo ?? "fuerza",
+      };
+    }),
+  );
+
+  const sinDatosCriticos = ejerciciosConTipo.filter(
+    (ej) => (ej.tipo === "fuerza" || ej.tipo === "calistenia") &&
+            (ej.repsMin == null || ej.repsMax == null || ej.pesoObjetivo == null),
+  );
+  if (sinDatosCriticos.length > 0) {
+    const nombres = sinDatosCriticos.map((ej) => ej.ejercicioNombre ?? ej.ejercicioId ?? "desconocido");
+    throw new Error(
+      "Los ejercicios de fuerza/calistenia requieren repsMin, repsMax y pesoObjetivo. " +
+      `Faltan en: ${nombres.join(", ")}.`,
+    );
+  }
 
   // Construir las series según el tipo de ejercicio
   const rutinaId = uid();
@@ -500,7 +522,10 @@ async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
     (r) => (r.carpetaId ?? undefined) === (carpetaId ?? undefined),
   ).length;
 
-  const ejerciciosEnRutina = ejerciciosValidos.map((ej, idx) => {
+  const ejerciciosEnRutina = ejerciciosConTipo.map((ej, idx) => {
+    // Usar tipo real (o fuerza por defecto) para decidir si es cardio/tiempo o fuerza.
+    // buildDefaultSerie decide el modo basándose en duracionObjetivoMinutos/distanciaObjetivoKm;
+    // pasamos tipo solo para future-proof, sin añadirlo al tipoEjercicioEnRutinaArgs.
     return {
       id: uid(),
       ejercicioId: ej.resolvedId!,
@@ -543,21 +568,24 @@ async function ejecutarActualizarPlanificacionSemanal(
   const diasModificados: string[] = [];
 
   for (const [dia, rutinaIdOrName] of Object.entries(args.dias)) {
-    if (dia in plan.dias) {
-      // Resolver rutina: si es un ID válido (existe en DB), usarlo.
-      // Si no, intentar buscar por nombre. null = día de descanso.
-      let resolvedId: string | null = null;
-      if (typeof rutinaIdOrName === "string" && rutinaIdOrName.trim().length > 0) {
-        resolvedId = await resolveRutina(rutinaIdOrName, rutinaIdOrName);
-      }
+    // Normalizar clave de día: minúsculas y sin acentos para que coincida con
+    // las claves esperadas (lunes, martes, miercoles, jueves, viernes, sabado, domingo).
+    const diaNormalizado = dia.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (!(diaNormalizado in plan.dias)) continue;
 
-      plan.dias[dia as keyof typeof plan.dias] = {
-        rutinaId: resolvedId,
-        activo: resolvedId !== null,
-      };
-      diasModificados.push(dia);
-      cambios[dia] = resolvedId;
+    // Resolver rutina: si es un ID válido (existe en DB), usarlo.
+    // Si no, intentar buscar por nombre. null = día de descanso.
+    let resolvedId: string | null = null;
+    if (typeof rutinaIdOrName === "string" && rutinaIdOrName.trim().length > 0) {
+      resolvedId = await resolveRutina(rutinaIdOrName, rutinaIdOrName);
     }
+
+    plan.dias[diaNormalizado as keyof typeof plan.dias] = {
+      rutinaId: resolvedId,
+      activo: resolvedId !== null,
+    };
+    diasModificados.push(diaNormalizado);
+    cambios[diaNormalizado] = resolvedId;
   }
 
   await db.planificacionSemanal.put(plan);
@@ -778,15 +806,20 @@ async function ejecutarEditarEntrenamiento(
     }
   }
 
-  // Si no hay rutinaId ni rutinaNombre, buscar por fecha (primer log de ese día)
+  // Si no hay rutinaId ni rutinaNombre, buscar por fecha (primer log de ese día).
+  // Si hay más de un log en esa fecha, es ambiguo: pedir aclaración en vez de adivinar.
   if (logId == null && !args.rutinaId && !args.rutinaNombre) {
-    const match = await db.logsEntrenamientos
-      .where("fecha")
-      .equals(args.fecha)
-      .first();
-    if (match) {
-      logId = match.id;
-      rutinaSnapshot = match.rutinaSnapshot ?? match.rutinaId;
+    const logs = await db.logsEntrenamientos.where("fecha").equals(args.fecha).toArray();
+    if (logs.length === 0) {
+      // nada: se mantendrá logId == null y lanzará el error final
+    } else if (logs.length === 1) {
+      logId = logs[0].id;
+      rutinaSnapshot = logs[0].rutinaSnapshot ?? logs[0].rutinaId;
+    } else {
+      throw new Error(
+        `Hay ${logs.length} entrenamientos registrados el ${args.fecha}. ` +
+        "Especifica rutinaId o rutinaNombre para editar el correcto.",
+      );
     }
   }
 
