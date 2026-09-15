@@ -1,4 +1,11 @@
-import { db, type LogEntrenamiento, type TipoEjercicio } from "../../core/db";
+import {
+  db,
+  type DiaSemana,
+  type LogEntrenamiento,
+  type PlanificacionSemanal,
+  type Rutina,
+  type TipoEjercicio,
+} from "../../core/db";
 import { calcularE1RM } from "../../core/utils/calculators";
 
 export interface PuntoAnalytics {
@@ -78,6 +85,127 @@ export interface SemanaGrupoMuscular {
   inicio: Date;
   fin: Date;
   grupos: MetricaGrupoMuscular[];
+}
+
+export interface AdherenciaRutina {
+  rutinaId: string;
+  nombre: string;
+  planificados: number;
+  completados: number;
+  porcentaje: number;
+}
+
+export interface AdherenciaPlanificacion {
+  semanaInicio: Date;
+  semanaFin: Date;
+  entrenamientosPlanificados: number;
+  entrenamientosCompletados: number;
+  porcentajeCumplimiento: number;
+  sesionesOmitidas: number;
+  diasConsecutivos: number;
+  rutinas: AdherenciaRutina[];
+}
+
+const DIAS_PLANIFICACION: DiaSemana[] = [
+  "lunes",
+  "martes",
+  "miercoles",
+  "jueves",
+  "viernes",
+  "sabado",
+  "domingo",
+];
+
+function fechaLocalISO(fecha: Date): string {
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+}
+
+function inicioSemanaLocal(fecha: Date): Date {
+  const inicio = new Date(fecha);
+  inicio.setHours(0, 0, 0, 0);
+  const dia = inicio.getDay();
+  inicio.setDate(inicio.getDate() - (dia === 0 ? 6 : dia - 1));
+  return inicio;
+}
+
+/**
+ * Compara la planificación semanal actual con los logs completados.
+ * Las sesiones futuras no se consideran omitidas, aunque sí forman parte
+ * del total planificado de la semana.
+ */
+export function calcularAdherenciaPlanificacion(
+  planificacion: PlanificacionSemanal | undefined,
+  logs: LogEntrenamiento[],
+  rutinas: Rutina[],
+  ahora = new Date(),
+): AdherenciaPlanificacion {
+  const semanaInicio = inicioSemanaLocal(ahora);
+  const semanaFin = new Date(semanaInicio);
+  semanaFin.setDate(semanaFin.getDate() + 6);
+  const hoyISO = fechaLocalISO(ahora);
+  const logsCompletados = logs.filter((log) => log.completado);
+  const diasCompletados = new Set(logsCompletados.map((log) => fechaLocalISO(new Date(log.fecha))));
+  const rutinasMap = new Map(rutinas.map((rutina) => [rutina.id, rutina.nombre]));
+  const porRutina = new Map<string, { nombre: string; planificados: number; completados: number }>();
+  let entrenamientosPlanificados = 0;
+  let entrenamientosCompletados = 0;
+  let sesionesOmitidas = 0;
+
+  for (let index = 0; index < DIAS_PLANIFICACION.length; index++) {
+    const fecha = new Date(semanaInicio);
+    fecha.setDate(fecha.getDate() + index);
+    const dia = planificacion?.dias[DIAS_PLANIFICACION[index]];
+    if (!dia?.activo || !dia.rutinaId) continue;
+
+    const rutinaId = dia.rutinaId;
+    const nombre = rutinasMap.get(rutinaId) ?? (rutinaId === "custom-libre" ? "ENTRENAMIENTO LIBRE" : "RUTINA DESCONOCIDA");
+    const acumulado = porRutina.get(rutinaId) ?? { nombre, planificados: 0, completados: 0 };
+    acumulado.planificados++;
+    entrenamientosPlanificados++;
+
+    const fechaISO = fechaLocalISO(fecha);
+    const completado = logsCompletados.some(
+      (log) => log.rutinaId === rutinaId && fechaLocalISO(new Date(log.fecha)) === fechaISO,
+    );
+    if (completado) {
+      acumulado.completados++;
+      entrenamientosCompletados++;
+    } else if (fechaISO <= hoyISO) {
+      sesionesOmitidas++;
+    }
+    porRutina.set(rutinaId, acumulado);
+  }
+
+  const ultimoDiaCompletado = [...diasCompletados].sort().at(-1);
+  let diasConsecutivos = 0;
+  if (ultimoDiaCompletado) {
+    const cursor = new Date(`${ultimoDiaCompletado}T00:00:00`);
+    while (diasCompletados.has(fechaLocalISO(cursor))) {
+      diasConsecutivos++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+  }
+
+  const rutinasAdherencia = [...porRutina.entries()].map(([rutinaId, rutina]) => ({
+    rutinaId,
+    nombre: rutina.nombre,
+    planificados: rutina.planificados,
+    completados: rutina.completados,
+    porcentaje: rutina.planificados > 0 ? (rutina.completados / rutina.planificados) * 100 : 0,
+  }));
+
+  return {
+    semanaInicio,
+    semanaFin,
+    entrenamientosPlanificados,
+    entrenamientosCompletados,
+    porcentajeCumplimiento: entrenamientosPlanificados > 0
+      ? (entrenamientosCompletados / entrenamientosPlanificados) * 100
+      : 0,
+    sesionesOmitidas,
+    diasConsecutivos,
+    rutinas: rutinasAdherencia,
+  };
 }
 
 export interface AnaliticaGrupoMuscular {

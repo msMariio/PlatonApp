@@ -10,6 +10,7 @@ import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { SectionLabel } from "../../components/SectionLabel";
 import { PageHeader } from "../../components/PageHeader";
 import {
+  calcularAdherenciaPlanificacion,
   calcularAnaliticaGrupoMuscular,
   clasificarSeriesMusculares,
   type EstadoSeriesMusculares,
@@ -50,11 +51,18 @@ export function GrupoMuscularAnalyticsView() {
   const [metricaGrafico, setMetricaGrafico] = useState<"series" | "volumen">("series");
   const logsQuery = useLiveQuery(() => db.logsEntrenamientos.toArray(), []);
   const ejerciciosQuery = useLiveQuery(() => db.ejercicios.toArray(), []);
+  const planificacionQuery = useLiveQuery(() => db.planificacionSemanal.get("default"), []);
+  const rutinasQuery = useLiveQuery(() => db.rutinas.toArray(), []);
   const logs = useMemo(() => logsQuery ?? [], [logsQuery]);
   const ejercicios = useMemo(() => ejerciciosQuery ?? [], [ejerciciosQuery]);
+  const rutinas = useMemo(() => rutinasQuery ?? [], [rutinasQuery]);
   const analitica = useMemo(
     () => calcularAnaliticaGrupoMuscular(logs, ejercicios),
     [logs, ejercicios],
+  );
+  const adherencia = useMemo(
+    () => calcularAdherenciaPlanificacion(planificacionQuery, logs, rutinas),
+    [planificacionQuery, logs, rutinas],
   );
   const semanaActual = analitica.actual;
   const semanaAnterior = analitica.semanas[analitica.semanas.length - 2].grupos;
@@ -104,6 +112,46 @@ export function GrupoMuscularAnalyticsView() {
           </CardContent>
         </Card>
       </Stack>
+
+      <Card sx={{ borderLeft: 4, borderColor: "info.main" }}>
+        <CardContent>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", mb: 2 }}>
+            <SectionLabel sx={{ mb: 0 }}>ADHERENCIA A LA PLANIFICACIÓN // SEMANA ACTUAL</SectionLabel>
+            <Chip label={`${adherencia.entrenamientosCompletados}/${adherencia.entrenamientosPlanificados} COMPLETADOS`} size="small" color="info" variant="outlined" sx={{ borderRadius: 0, alignSelf: { xs: "flex-start", sm: "auto" } }} />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
+            {[
+              { label: "CUMPLIMIENTO", value: `${adherencia.porcentajeCumplimiento.toFixed(0)}%` },
+              { label: "PLANIFICADOS", value: String(adherencia.entrenamientosPlanificados) },
+              { label: "COMPLETADOS", value: String(adherencia.entrenamientosCompletados) },
+              { label: "RACHA", value: `${adherencia.diasConsecutivos} ${adherencia.diasConsecutivos === 1 ? "DÍA" : "DÍAS"}` },
+              { label: "OMITIDOS", value: String(adherencia.sesionesOmitidas) },
+            ].map((indicador) => (
+              <Box key={indicador.label} sx={{ flex: 1, border: 1, borderColor: "divider", p: 1 }}>
+                <Typography variant="caption" color="text.secondary">{indicador.label}</Typography>
+                <Typography variant="h6" color={indicador.label === "CUMPLIMIENTO" ? "info.main" : "text.primary"} sx={{ fontWeight: "bold", fontFamily: "monospace" }}>
+                  {indicador.value}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+          {adherencia.rutinas.length > 0 ? (
+            <Stack spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">CUMPLIMIENTO POR RUTINA</Typography>
+              {adherencia.rutinas.map((rutina) => (
+                <Box key={rutina.rutinaId} sx={{ display: "flex", justifyContent: "space-between", gap: 1, alignItems: "center", borderTop: 1, borderColor: "divider", pt: 0.75 }}>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis" }}>{rutina.nombre.toUpperCase()}</Typography>
+                  <Typography variant="caption" color={rutina.porcentaje === 100 ? "success.main" : "text.secondary"} sx={{ whiteSpace: "nowrap" }}>
+                    {rutina.completados}/{rutina.planificados} · {rutina.porcentaje.toFixed(0)}%
+                  </Typography>
+                </Box>
+              ))}
+            </Stack>
+          ) : (
+            <Typography variant="caption" color="text.secondary">[ SIN SESIONES PLANIFICADAS ESTA SEMANA ]</Typography>
+          )}
+        </CardContent>
+      </Card>
 
       {(analitica.abandonados.length > 0 || analitica.sobrecargados.length > 0) && (
         <Card sx={{ borderLeft: 4, borderColor: "warning.main" }}>

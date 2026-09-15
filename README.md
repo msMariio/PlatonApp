@@ -59,6 +59,7 @@ Si una rutina o ejercicio está referenciado por el historial, se archiva en vez
 
 - **Fuerza:** e1RM, delta de 30 días y fuerza relativa.
 - **Músculos:** volumen semanal, series efectivas, frecuencia, evolución de volumen, comparación semanal y alertas de grupos abandonados o con posible sobrecarga.
+- **Adherencia:** entrenamientos planificados/completados, porcentaje semanal, racha de días, sesiones omitidas y cumplimiento por rutina; cruza la planificación semanal con logs completados por fecha y rutina.
 - La analítica muscular ignora cardio y ejercicios sin grupo muscular; no los convierte artificialmente en un músculo.
 
 - **Peso:** registros, edición, borrado, gráfica bruta y tendencia EMA-7.
@@ -219,7 +220,7 @@ Archivos clave:
 - `src/features/coach-ia/services/toolExecutor.ts`: escrituras reales.
 - `src/features/coach-ia/components/ToolProposalCard.tsx`: UI de propuesta.
 - `src/features/analytics/GrupoMuscularAnalyticsView.tsx`: panel semanal agregado por músculo.
-- `src/features/analytics/data.ts`: cálculo de semanas, volumen, series, frecuencia y alertas musculares.
+- `src/features/analytics/data.ts`: cálculo de semanas, volumen, series, frecuencia, adherencia y alertas musculares.
 
 ## Datos y persistencia
 
@@ -640,6 +641,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-15 — Adherencia a la planificación
+
+- **Cambio:** se añadió en la pantalla de métricas un bloque de adherencia semanal con sesiones planificadas/completadas, porcentaje de cumplimiento, racha de días, sesiones omitidas y desglose por rutina.
+- **Motivación:** conectar la planificación configurada con el historial real y hacer visible el cumplimiento semanal.
+- **Áreas afectadas:** `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx` y este README.
+- **Contrato nuevo:** `calcularAdherenciaPlanificacion()` compara la planificación lunes-domingo actual con logs `completado` de la misma fecha y `rutinaId`; las sesiones futuras no cuentan como omitidas.
+- **Migración/verificación:** no requiere migración de IndexedDB; pendiente verificar con `npm run build`.
 
 ### 2026-09-15 — Cálculo unificado de e1RM
 
