@@ -101,7 +101,7 @@ function EjercicioCard({
           variant="caption"
           color={isArchived ? "text.disabled" : "text.secondary"}
         >
-          {ejercicio.grupoMuscular.toUpperCase()} · {tipoLabel}
+          {(ejercicio.grupoMuscular ?? "SIN CLASIFICAR").toUpperCase()} · {tipoLabel}
           {isArchived ? " · ARCHIVADO" : ""}
         </Typography>
       </Box>
@@ -181,7 +181,7 @@ export function EjerciciosMaestrosView({ onBack, onOpenAnalytics }: Props) {
     .filter(
       (e) =>
         e.nombre.toLowerCase().includes(f) ||
-        e.grupoMuscular.toLowerCase().includes(f),
+        (e.grupoMuscular ?? "sin clasificar").toLowerCase().includes(f),
     )
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 

@@ -64,7 +64,7 @@ export function EjercicioLoggerCard({
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {catalog
-                  ? `${catalog.grupoMuscular.toUpperCase()} // ${tipo.toUpperCase()}`
+                  ? `${(catalog.grupoMuscular ?? "SIN CLASIFICAR").toUpperCase()} // ${tipo.toUpperCase()}`
                   : ""}
               </Typography>
             </Box>

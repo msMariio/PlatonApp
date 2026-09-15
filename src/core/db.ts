@@ -3,12 +3,13 @@ import Dexie, { type Table } from "dexie";
 export type GrupoMuscular =
   | "pecho"
   | "espalda"
-  | "pierna"
+  | "cuadriceps"
+  | "isquios"
   | "hombro"
-  | "brazos"
+  | "biceps"
+  | "triceps"
   | "core"
-  | "cardio"
-  | "fullbody";
+  | "gluteo";
 
 export type TipoEjercicio = "fuerza" | "cardio" | "tiempo" | "calistenia";
 
@@ -24,7 +25,8 @@ export type DiaSemana =
 export interface Ejercicio {
   id: string;
   nombre: string;
-  grupoMuscular: GrupoMuscular;
+  /** Puede faltar en ejercicios antiguos hasta que se reclasifiquen manualmente. */
+  grupoMuscular?: GrupoMuscular;
   descripcion?: string;
   tipo: TipoEjercicio;
   isArchived?: boolean;
@@ -387,6 +389,30 @@ class GymDatabase extends Dexie {
           })),
         }));
         await tx.table<Rutina>("rutinas").bulkPut(rutinasActualizadas);
+      });
+
+    // v11: grupos musculares anatómicos; los grupos antiguos requieren
+    // reclasificación manual y quedan sin grupo para no inventar datos.
+    this.version(11)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async (tx) => {
+        const ejercicios = await tx.table<Ejercicio>("ejercicios").toArray();
+        const antiguos = new Set(["pierna", "brazos", "cardio", "fullbody"]);
+        const actualizados = ejercicios
+          .filter((e) => e.grupoMuscular === undefined || antiguos.has(e.grupoMuscular))
+          .map((e) => ({ ...e, grupoMuscular: undefined }));
+        if (actualizados.length > 0) {
+          await tx.table<Ejercicio>("ejercicios").bulkPut(actualizados);
+        }
       });
   }
 }

@@ -27,17 +27,18 @@ type Props = {
 const GRUPOS: GrupoMuscular[] = [
   "pecho",
   "espalda",
-  "pierna",
+  "cuadriceps",
+  "isquios",
   "hombro",
-  "brazos",
+  "biceps",
+  "triceps",
   "core",
-  "cardio",
-  "fullbody",
+  "gluteo",
 ];
 
 export function EditarEjercicioDialog({ open, ejercicio, onClose, onSaved }: Props) {
   const [nombre, setNombre] = useState("");
-  const [grupoSel, setGrupoSel] = useState<GrupoMuscular>("pecho");
+  const [grupoSel, setGrupoSel] = useState<GrupoMuscular | undefined>("pecho");
   const [tipoSel, setTipoSel] = useState<TipoEjercicio>("fuerza");
   const [desc, setDesc] = useState("");
 
@@ -94,8 +95,8 @@ export function EditarEjercicioDialog({ open, ejercicio, onClose, onSaved }: Pro
           <ToggleButtonGroup
             exclusive
             size="small"
-            value={grupoSel}
-            onChange={(_, v) => v && setGrupoSel(v as GrupoMuscular)}
+            value={grupoSel ?? false}
+            onChange={(_, v) => setGrupoSel((v as GrupoMuscular | null) ?? undefined)}
             sx={{ flexWrap: "wrap", gap: 0.5 }}
           >
             {GRUPOS.map((g) => (

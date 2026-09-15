@@ -233,7 +233,7 @@ export function EjercicioEnRutinaCard({
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {catalog
-                  ? `${catalog.grupoMuscular.toUpperCase()} // ${tipo.toUpperCase()}`
+                  ? `${(catalog.grupoMuscular ?? "SIN CLASIFICAR").toUpperCase()} // ${tipo.toUpperCase()}`
                   : ""}
               </Typography>
               {catalog?.descripcion && (

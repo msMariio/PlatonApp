@@ -36,12 +36,13 @@ type Props = {
 const GRUPOS: GrupoMuscular[] = [
   "pecho",
   "espalda",
-  "pierna",
+  "cuadriceps",
+  "isquios",
   "hombro",
-  "brazos",
+  "biceps",
+  "triceps",
   "core",
-  "cardio",
-  "fullbody",
+  "gluteo",
 ];
 
 export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = false }: Props) {
@@ -79,7 +80,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = f
     .filter((e) =>
       f
         ? e.nombre.toLowerCase().includes(f) ||
-          e.grupoMuscular.includes(f)
+          (e.grupoMuscular ?? "sin clasificar").includes(f)
         : true
     )
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -205,7 +206,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = f
                   >
                     <ListItemText
                       primary={e.nombre}
-                      secondary={e.grupoMuscular.toUpperCase()}
+                      secondary={(e.grupoMuscular ?? "SIN CLASIFICAR").toUpperCase()}
                     />
                   </ListItemButton>
                 ))}

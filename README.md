@@ -35,8 +35,9 @@ La aplicación está pensada para uso personal, móvil y como PWA instalable. No
 - Edita nombre, descripción, ejercicios, series y orden.
 - Crea, busca, edita, archiva y desarchiva ejercicios maestros.
 - Tipos: `fuerza`, `cardio`, `tiempo`, `calistenia`.
-- Grupos: `pecho`, `espalda`, `pierna`, `hombro`, `brazos`, `core`, `cardio`, `fullbody`.
-- Abre analíticas de cada ejercicio.
+- Grupos musculares: `pecho`, `espalda`, `cuadriceps`, `isquios`, `hombro`, `biceps`, `triceps`, `core`, `gluteo`.
+- Los ejercicios antiguos con grupos ambiguos quedan como `SIN CLASIFICAR` hasta editarlos manualmente.
+- Abre analíticas de cada ejercicio y una analítica agregada de grupos musculares.
 
 Si una rutina o ejercicio está referenciado por el historial, se archiva en vez de borrarse físicamente.
 
@@ -57,6 +58,9 @@ Si una rutina o ejercicio está referenciado por el historial, se archiva en vez
 ### Métricas
 
 - **Fuerza:** e1RM, delta de 30 días y fuerza relativa.
+- **Músculos:** volumen semanal, series efectivas, frecuencia, evolución de volumen, comparación semanal y alertas de grupos abandonados o con posible sobrecarga.
+- La analítica muscular ignora cardio y ejercicios sin grupo muscular; no los convierte artificialmente en un músculo.
+
 - **Peso:** registros, edición, borrado, gráfica bruta y tendencia EMA-7.
 - Timeframes: `7D`, `30D`, `1A`, `TODO`.
 - Levantamientos principales detectados por nombre: `banca`, `sentadilla`, `peso muerto`, `press militar`.
@@ -156,7 +160,7 @@ main.tsx
 ```text
 tab 0 → HomeView
  tab 1 → RutinasView
- tab 2 → MetricsHub
+ tab 2 → MetricsHub (fuerza, peso y músculos)
  tab 3 → CoachView
  tab 4 → SettingsView
 ```
@@ -197,7 +201,7 @@ Dexie → IndexedDB
         ├── home/               # inicio y planificación
         ├── rutinas/            # carpetas, rutinas y catálogo
         ├── training-logger/    # registro
-        ├── analytics/          # analítica de ejercicio
+        ├── analytics/          # analítica de ejercicio y grupos musculares
         ├── metrics/            # fuerza, fuerza relativa y peso
         ├── peso-tracker/       # operaciones de peso
         ├── coach-ia/           # Gemini, tools y chat
@@ -219,6 +223,8 @@ Archivos clave:
 - `src/features/coach-ia/services/toolDefinitions.ts`: tipos y schemas.
 - `src/features/coach-ia/services/toolExecutor.ts`: escrituras reales.
 - `src/features/coach-ia/components/ToolProposalCard.tsx`: UI de propuesta.
+- `src/features/analytics/GrupoMuscularAnalyticsView.tsx`: panel semanal agregado por músculo.
+- `src/features/analytics/data.ts`: cálculo de semanas, volumen, series, frecuencia y alertas musculares.
 
 ## Datos y persistencia
 
@@ -230,7 +236,7 @@ La base se llama `GymTrackerDB`.
 interface Ejercicio {
   id: string;
   nombre: string;
-  grupoMuscular: GrupoMuscular;
+  grupoMuscular?: GrupoMuscular;
   descripcion?: string;
   tipo: TipoEjercicio;
   isArchived?: boolean;
@@ -322,6 +328,7 @@ interface MensajeChat {
 - v8: archivado de ejercicios.
 - v9: archivado de rutinas.
 - v10: `repsObjetivo` → `repsMin`/`repsMax`.
+- v11: grupos anatómicos nuevos; valores antiguos (`pierna`, `brazos`, `cardio`, `fullbody`) pasan a sin clasificar para reclasificación manual.
 
 **Regla:** cualquier cambio persistido requiere nueva versión y migración; no se deben reescribir silenciosamente versiones publicadas. Actualizar también `backup.ts` y este README.
 
@@ -638,6 +645,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-15 — Analítica por grupo muscular
+
+- **Cambio:** se añadieron grupos anatómicos específicos y una pestaña de métricas musculares con volumen semanal, series efectivas, frecuencia, evolución de ocho semanas, comparación con la semana anterior y alertas de abandono/sobrecarga.
+- **Motivación:** complementar la analítica por ejercicio con una visión de equilibrio y distribución del entrenamiento.
+- **Áreas afectadas:** `src/core/db.ts`, `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx`, `src/features/metrics/MetricsHub.tsx`, diálogos/catálogo de ejercicios y este README.
+- **Contrato nuevo:** `GrupoMuscular` contiene nueve grupos anatómicos; ejercicios legacy ambiguos se almacenan sin grupo hasta reclasificación manual. Una serie efectiva es una serie completada con reps o peso; la sobrecarga se marca con un aumento de al menos 50% en series o volumen frente a la semana anterior.
+- **Migración/verificación:** migración Dexie v11; `npm run build` correcto.
 
 ### 2026-09-15 — Registro automático de récords personales
 

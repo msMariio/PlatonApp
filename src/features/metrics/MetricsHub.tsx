@@ -40,6 +40,7 @@ import { ChartPesoCorporal } from "./components/ChartPesoCorporal";
 import { db, type PesoDiario, type Ejercicio } from "../../core/db";
 import { useE1RM, useEjerciciosConLogs, MAIN_LIFT_KEYWORDS } from "./useE1RM";
 import { useFuerzaRelativa } from "./useFuerzaRelativa";
+import { GrupoMuscularAnalyticsView } from "../analytics/GrupoMuscularAnalyticsView";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -109,7 +110,7 @@ export function MetricsHub() {
   const [registrosExpanded, setRegistrosExpanded] = useState(false);
 
   // ─── Tab navigation: fuerza vs peso ──────────────────────
-  const [tab, setTab] = useState<"fuerza" | "peso">("fuerza");
+  const [tab, setTab] = useState<"fuerza" | "peso" | "musculos">("fuerza");
 
   const ultimoPeso = pesos.length > 0 ? pesos[pesos.length - 1] : null;
   const pesosFiltrados = filtrarPesos(pesos, timeframePeso);
@@ -251,6 +252,25 @@ export function MetricsHub() {
         }}
       >
         PESO
+      </Button>
+      <Button
+        onClick={() => setTab("musculos")}
+        disableElevation
+        aria-pressed={tab === "musculos"}
+        sx={{
+          flex: 1,
+          py: 0.75,
+          borderRadius: 0,
+          fontSize: "0.8rem",
+          fontWeight: tab === "musculos" ? 700 : 400,
+          bgcolor: tab === "musculos" ? "primary.main" : "transparent",
+          color: tab === "musculos" ? "primary.contrastText" : "text.secondary",
+          border: "none",
+          transition: "all 0.15s ease",
+          "&:hover": { bgcolor: tab === "musculos" ? "primary.main" : "action.hover" },
+        }}
+      >
+        MÚSCULOS
       </Button>
     </Box>
   );
@@ -865,6 +885,12 @@ export function MetricsHub() {
               </Accordion>
             </CardContent>
           </Card>
+        </Box>
+      </Fade>
+
+      <Fade in={tab === "musculos"} timeout={200} unmountOnExit>
+        <Box>
+          <GrupoMuscularAnalyticsView />
         </Box>
       </Fade>
 

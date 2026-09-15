@@ -458,7 +458,7 @@ async function ejecutarCrearEjercicio(args: CrearEjercicioArgs): Promise<{ id: s
     return {
       id: existente.id,
       nombre: existente.nombre,
-      grupoMuscular: existente.grupoMuscular,
+      grupoMuscular: existente.grupoMuscular ?? "sin_clasificar",
       creado: false,
     };
   }
