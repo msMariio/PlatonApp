@@ -5,6 +5,7 @@ import {
   type SerieReal,
   type Rutina,
 } from "../../core/db";
+import { calcularE1RM } from "../../core/utils/calculators";
 
 /** ID de rutina especial para entrenamientos libres (sin plantilla). */
 export const CUSTOM_LIBRE_ID = "custom-libre";
@@ -158,11 +159,6 @@ export interface RecordPersonal {
   valor: number;
   anterior?: number;
   unidad: string;
-}
-
-function calcularE1RM(peso: number, reps: number): number {
-  if (peso <= 0 || reps <= 0 || reps >= 37) return 0;
-  return peso * (36 / (37 - reps));
 }
 
 function obtenerMetricasEjercicio(ejercicio: EjercicioReal) {

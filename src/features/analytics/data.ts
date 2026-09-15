@@ -1,4 +1,5 @@
 import { db, type LogEntrenamiento, type TipoEjercicio } from "../../core/db";
+import { calcularE1RM } from "../../core/utils/calculators";
 
 export interface PuntoAnalytics {
   fecha: Date;
@@ -196,9 +197,10 @@ export function calcularPuntosAnalytics(
       0
     );
 
-    // 1RM estimado con fórmula de Epley: peso * (1 + reps/30)
+    // e1RM estimado con la fórmula global de Brzycki.
     const oneRm = Math.max(
-      ...seriesCompletadas.map((s) => (s.peso ?? 0) * (1 + (s.reps ?? 0) / 30))
+      0,
+      ...seriesCompletadas.map((s) => calcularE1RM(s.peso ?? 0, s.reps ?? 0)),
     );
 
     const duracionTotal =

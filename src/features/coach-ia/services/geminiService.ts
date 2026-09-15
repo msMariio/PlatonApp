@@ -1,5 +1,6 @@
 import { db, type MensajeChat, type SesionChat, type LogEntrenamiento, type PesoDiario, type Ejercicio } from "../../../core/db";
 import { SYSTEM_PROMPT_PERFORMANCE_OS } from "../../../core/ia-prompts";
+import { calcularE1RM } from "../../../core/utils/calculators";
 import { TOOL_DECLARATIONS, type FunctionDeclaration } from "./toolDefinitions";
 
 const GEMINI_API_BASE =
@@ -242,12 +243,6 @@ function calcularVelocidadSemanal(
 
 const MAIN_LIFT_KEYWORDS = ["banca", "sentadilla", "peso muerto", "press militar"];
 
-/** Fórmula de Brzycki: e1RM = w × (36 / (37 - r)) */
-function brzycki(w: number, r: number): number {
-  if (r <= 0 || r >= 37) return 0;
-  return w * (36 / (37 - r));
-}
-
 /** Mejor e1RM estimado para un ejercicio en un log. */
 function calcularE1RMPorLog(log: LogEntrenamiento, ejercicioId: string): number {
   const ej = log.ejercicios.find((e) => e.ejercicioId === ejercicioId);
@@ -258,7 +253,7 @@ function calcularE1RMPorLog(log: LogEntrenamiento, ejercicioId: string): number 
     const peso = s.peso ?? 0;
     const reps = s.reps ?? 0;
     if (peso <= 0 || reps <= 0) continue;
-    const e = brzycki(peso, reps);
+    const e = calcularE1RM(peso, reps);
     if (e > mejor) mejor = e;
   }
   return mejor;

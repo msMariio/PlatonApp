@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type LogEntrenamiento, type Ejercicio } from "../../core/db";
+import { calcularE1RM } from "../../core/utils/calculators";
 
 export interface PuntoE1RM {
   fecha: Date;
@@ -11,15 +12,6 @@ export interface E1RMData {
   puntos: PuntoE1RM[];
   actual: number | null;
   delta30dias: number | null;
-}
-
-/**
- * Fórmula de Brzycki: e1RM = w × (36 / (37 - r))
- * Válida para 1 ≤ r < 37. Más precisa para r ≤ 10.
- */
-function brzycki(w: number, r: number): number {
-  if (r <= 0 || r >= 37) return 0;
-  return w * (36 / (37 - r));
 }
 
 /**
@@ -39,7 +31,7 @@ function calcularE1RMPorLog(
     const peso = serie.peso ?? 0;
     const reps = serie.reps ?? 0;
     if (peso <= 0 || reps <= 0) continue;
-    const e1rm = brzycki(peso, reps);
+    const e1rm = calcularE1RM(peso, reps);
     if (e1rm > mejorE1RM) mejorE1RM = e1rm;
   }
   return mejorE1RM;
@@ -47,7 +39,7 @@ function calcularE1RMPorLog(
 
 /**
  * Hook que devuelve los datos de progresión de e1RM para un ejercicio.
- * Calcula Brzycki e1RM para cada log de entrenamiento donde aparece el ejercicio.
+ * Calcula el e1RM con el helper global para cada log de entrenamiento donde aparece el ejercicio.
  */
 export function useE1RM(ejercicioId: string | null): E1RMData {
   const logs = useLiveQuery(() => db.logsEntrenamientos.toArray(), []) ?? [];

@@ -65,19 +65,13 @@ Si una rutina o ejercicio está referenciado por el historial, se archiva en vez
 - Timeframes: `7D`, `30D`, `1A`, `TODO`.
 - Levantamientos principales detectados por nombre: `banca`, `sentadilla`, `peso muerto`, `press militar`.
 
-`features/metrics/useE1RM.ts` usa Brzycki:
+`src/core/utils/calculators.ts` centraliza el e1RM con Brzycki:
 
 ```text
 e1RM = peso × (36 / (37 - repeticiones))
 ```
 
-`features/analytics/data.ts` usa Epley para `oneRm`:
-
-```text
-1RM = peso × (1 + repeticiones / 30)
-```
-
-Son cálculos distintos y no deben unificarse sin una decisión explícita.
+La misma función se utiliza en la pantalla de fuerza, la analítica por ejercicio, los récords personales y el snapshot del coach IA. `oneRm` en `features/analytics/data.ts` mantiene ese nombre histórico, pero usa el mismo cálculo global.
 
 ### Ajustes
 
@@ -215,6 +209,7 @@ Archivos clave:
 - `src/core/backup.ts`: export/import atómico.
 - `src/core/ia-prompts.ts`: prompt completo del coach.
 - `src/core/theme.tsx`: tema.
+- `src/core/utils/calculators.ts`: cálculos compartidos de e1RM con Brzycki.
 - `src/features/training-logger/data.ts`: logs, placeholders, volumen y detección de récords personales.
 - `src/features/training-logger/components/PersonalRecordsModal.tsx`: resumen de récords tras guardar.
 - `src/features/training-logger/utils/compareWorkoutWithTemplate.ts`: progresión.
@@ -639,12 +634,20 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 6. Registrar una rutina desde IA copia objetivos como completados; para datos reales usar modo libre o editar después.
 7. El archivado lógico conserva logs históricos.
 8. Conviven fechas `YYYY-MM-DD`, horas locales y timestamps ISO; revisar zonas horarias.
-9. Métricas usa Brzycki y analytics usa Epley.
+9. Todas las métricas de e1RM usan Brzycki desde `core/utils/calculators.ts`.
 10. No hay backend ni tests automatizados.
 11. Los patrones específicos de React 19 + StrictMode no deben eliminarse sin reproducir sus problemas.
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-15 — Cálculo unificado de e1RM
+
+- **Cambio:** se centralizó la fórmula de Brzycki en `src/core/utils/calculators.ts` y se eliminaron las implementaciones duplicadas de fuerza, analítica, récords personales y snapshot del coach IA.
+- **Motivación:** evitar discrepancias numéricas entre pantallas y mantener una única definición de e1RM.
+- **Áreas afectadas:** `src/core/utils/calculators.ts`, `src/features/metrics/useE1RM.ts`, `src/features/analytics/data.ts`, `src/features/training-logger/data.ts`, `src/features/coach-ia/services/geminiService.ts` y este README.
+- **Contrato nuevo:** `calcularE1RM(peso, repeticiones)` devuelve `0` si el peso o las repeticiones no son válidos y aplica Brzycki para `1 ≤ repeticiones < 37`.
+- **Migración/verificación:** no requiere migración de IndexedDB; pendiente verificar con `npm run build`.
 
 ### 2026-09-15 — Analítica por grupo muscular
 
