@@ -94,23 +94,19 @@ export interface EditarEjercicioArgs {
 export interface EditarCarpetaArgs {
   carpetaId?: string;
   carpetaNombre?: string;
-  nombre?: string;
+  nombre: string;
 }
 
 export interface RegistrarPesoArgs {
   valor: number;
   fecha?: string;
-  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
-  fechaDefault?: string;
   hora?: string;
 }
 
 export interface EditarPesoArgs {
   fecha: string;
-  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
-  fechaDefault?: string;
   hora?: string;
-  nuevoValor?: number;
+  nuevoValor: number;
 }
 
 export interface SerieRealArgs {
@@ -130,8 +126,6 @@ export interface EjercicioRealArgs {
 
 export interface RegistrarEntrenamientoArgs {
   fecha?: string;
-  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
-  fechaDefault?: string;
   rutinaId?: string;
   rutinaNombre?: string;
   ejercicios?: EjercicioRealArgs[];
@@ -299,7 +293,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio. Si no existe en el catálogo, se creará automáticamente con grupoMuscular 'fullbody' y tipo 'fuerza'.",
+                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
               },
               series: {
                 type: "integer",
@@ -368,8 +362,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: "object",
           description:
             "Objeto con los días a modificar. Las claves son los días de la semana en minúscula. " +
-            "El valor es el ID de la rutina asignada, o null para marcar como descanso. " +
-            "Solo incluye los días que quieras cambiar.",
+            "El valor es el ID o nombre exacto de la rutina asignada, o null para marcar como descanso. " +
+            "Solo incluye los días que quieras cambiar; si la rutina no existe, la operación falla.",
           properties: {
             lunes: {
               type: "string",
@@ -461,7 +455,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio. Si no existe en el catálogo, se creará automáticamente con grupoMuscular 'fullbody' y tipo 'fuerza'.",
+                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
               },
               series: {
                 type: "integer",
@@ -674,7 +668,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         fecha: {
           type: "string",
           description:
-            "Fecha del registro en formato YYYY-MM-DD. Por defecto, hoy.",
+            "Fecha efectiva en formato YYYY-MM-DD. El agente debe pasar aquí FECHA_ACTUAL para hoy; si se omite, el executor usa el reloj local.",
         },
         hora: {
           type: "string",
@@ -701,7 +695,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         hora: {
           type: "string",
           description:
-            "Hora del registro a modificar en formato HH:MM. Si no se especifica, se busca el registro más cercano a esa fecha.",
+            "Hora del registro a modificar en formato HH:MM. Si no se especifica, se busca el primer registro de esa fecha.",
         },
         nuevoValor: {
           type: "number",
@@ -725,7 +719,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         fecha: {
           type: "string",
           description:
-            "Fecha del entrenamiento en formato YYYY-MM-DD. Por defecto, hoy.",
+            "Fecha efectiva en formato YYYY-MM-DD. El agente debe pasar aquí FECHA_ACTUAL para hoy; si se omite, el executor usa el reloj local.",
         },
         rutinaId: {
           type: "string",
@@ -752,7 +746,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio. Si no existe en el catálogo, se creará automáticamente.",
+                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
               },
               series: {
                 type: "array",
@@ -844,7 +838,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               ejercicioNombre: {
                 type: "string",
-                description: "Nombre del ejercicio. Si no existe se creará automáticamente.",
+                description: "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
               },
               series: {
                 type: "array",

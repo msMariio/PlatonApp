@@ -48,7 +48,7 @@ async function resolveCarpeta(
 
 /**
  * Busca un ejercicio por ID o, si no se encuentra, por nombre.
- * Si no existe y se pasa nombre, lo crea con valores por defecto y devuelve su ID.
+ * Las tools nunca crean ejercicios implícitamente: si no existe, la operación falla.
  */
 async function resolveEjercicio(
   ejercicioId: string | undefined,
@@ -64,8 +64,21 @@ async function resolveEjercicio(
       .first();
     if (porNombre) return porNombre.id;
   }
-  // NO crear ejercicios en silencio: el agente debe usar crear_ejercicio explícitamente.
   return undefined;
+}
+
+async function requireEjercicioId(
+  ejercicioId: string | undefined,
+  ejercicioNombre: string | undefined,
+): Promise<string> {
+  const resolvedId = await resolveEjercicio(ejercicioId, ejercicioNombre);
+  if (!resolvedId) {
+    throw new Error(
+      `No se encontró en el catálogo el ejercicio "${ejercicioNombre ?? ejercicioId ?? "desconocido"}". ` +
+      "Crea primero el ejercicio con crear_ejercicio y vuelve a intentarlo.",
+    );
+  }
+  return resolvedId;
 }
 
 /**
@@ -180,20 +193,16 @@ async function ejecutarEditarRutina(
   let ejerciciosModificados = 0;
 
   if (args.ejerciciosQuitar && args.ejerciciosQuitar.length > 0) {
-    // Resolver IDs de ejercicios a quitar
-    const idsAQuitar = await Promise.all(
-      args.ejerciciosQuitar.map(async (eq) => {
-        if (eq.ejercicioId) return eq.ejercicioId;
-        if (eq.ejercicioNombre) {
-          const ej = await db.ejercicios
-            .filter((e) => e.nombre.toLowerCase() === eq.ejercicioNombre!.toLowerCase())
-            .first();
-          return ej?.id ?? null;
-        }
-        return null;
-      }),
+    const idsResueltos = await Promise.all(
+      args.ejerciciosQuitar.map((eq) => requireEjercicioId(eq.ejercicioId, eq.ejercicioNombre)),
     );
-    const idsSet = new Set(idsAQuitar.filter((id): id is string => id !== null));
+    const idsFueraDeRutina = idsResueltos.filter(
+      (id) => !ejercicios.some((ej) => ej.ejercicioId === id),
+    );
+    if (idsFueraDeRutina.length > 0) {
+      throw new Error("Uno o más ejercicios a quitar no pertenecen a la rutina indicada.");
+    }
+    const idsSet = new Set(idsResueltos);
     const antesDeFiltrar = ejercicios.length;
     ejercicios = ejercicios.filter((ej) => !idsSet.has(ej.ejercicioId));
     ejerciciosQuitados = antesDeFiltrar - ejercicios.length;
@@ -208,16 +217,17 @@ async function ejecutarEditarRutina(
       let targetId: string | null = null;
       if (mod.ejercicioId) targetId = mod.ejercicioId;
       if (!targetId && mod.ejercicioNombre) {
-        const ejCat = await db.ejercicios
-          .filter((e) => e.nombre.toLowerCase() === mod.ejercicioNombre!.toLowerCase())
-          .first();
-        targetId = ejCat?.id ?? null;
+        targetId = await requireEjercicioId(undefined, mod.ejercicioNombre);
       }
-      if (!targetId) continue;
+      if (!targetId) {
+        targetId = await requireEjercicioId(mod.ejercicioId, mod.ejercicioNombre);
+      }
 
       // Encontrar el ejercicio en la rutina
       const idx = ejercicios.findIndex((ej) => ej.ejercicioId === targetId);
-      if (idx === -1) continue;
+      if (idx === -1) {
+        throw new Error("El ejercicio a modificar no pertenece a la rutina indicada.");
+      }
 
       // Merge: preservar valores existentes, solo sobrescribir lo que la IA pasa explícitamente
       const oldSeries = ejercicios[idx].series;
@@ -283,11 +293,16 @@ async function ejecutarEditarRutina(
       }),
     );
 
-    const validos = resueltos.filter((e) => e.resolvedId);
+    // Todos los ejercicios deben existir: no se silencian referencias inválidas.
+    const noResueltos = resueltos.filter((e) => !e.resolvedId);
+    if (noResueltos.length > 0) {
+      const nombres = noResueltos.map((e) => e.ejercicioNombre ?? e.ejercicioId ?? "desconocido");
+      throw new Error(`No se encontraron en el catálogo los ejercicios: ${nombres.join(", ")}.`);
+    }
 
     // Construir nuevos EjercicioEnRutina con order al final
     const nextOrder = ejercicios.length;
-    const nuevosEjercicios = validos.map((ej, idx) => {
+    const nuevosEjercicios = resueltos.map((ej, idx) => {
       return {
         id: uid(),
         ejercicioId: ej.resolvedId!,
@@ -463,31 +478,30 @@ async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
   id: string;
   nombre: string;
   ejerciciosCount: number;
-  ejerciciosCreados: string[];
 }> {
-  // Resolver carpeta si se especifica
+  // Resolver carpeta si se especifica. Si carpetaNombre no existe, se crea
+  // dentro de la transacción de la tool.
   const carpetaId = await resolveCarpeta(args.carpetaId, args.carpetaNombre);
 
-  // Resolver ejercicios
-  const ejerciciosCreados: string[] = [];
   const ejerciciosResueltos = await Promise.all(
-    args.ejercicios.map(async (ej) => {
-      const eId = await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre);
-      if (eId && !ej.ejercicioId) {
-        ejerciciosCreados.push(ej.ejercicioNombre ?? eId);
-      }
-      return { ...ej, resolvedId: eId };
-    }),
+    args.ejercicios.map(async (ej) => ({
+      ...ej,
+      resolvedId: await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre),
+    })),
   );
 
-  // Filtrar ejercicios sin resolver
-  const ejerciciosValidos = ejerciciosResueltos.filter((e) => e.resolvedId);
-  if (ejerciciosValidos.length === 0) {
+  const ejerciciosNoResueltos = ejerciciosResueltos.filter((e) => !e.resolvedId);
+  if (ejerciciosNoResueltos.length > 0) {
+    const nombres = ejerciciosNoResueltos.map(
+      (ej) => ej.ejercicioNombre ?? ej.ejercicioId ?? "desconocido",
+    );
     throw new Error(
-      `No se pudo resolver ningún ejercicio de la rutina "${args.nombre}". ` +
-      "Asegúrate de indicar ejercicioId o ejercicioNombre válidos (o crea los ejercicios antes con crear_ejercicio).",
+      `No se encontraron en el catálogo los ejercicios: ${nombres.join(", ")}. ` +
+      "Crea primero cada ejercicio con crear_ejercicio y vuelve a intentarlo.",
     );
   }
+
+  const ejerciciosValidos = ejerciciosResueltos;
 
   // Validar que ejercicios de fuerza/calistenia tengan reps y peso objetivo
   // (tipo se deduce del catálogo; si el ejercicio no existe en catálogo, se usa fuerza por defecto)
@@ -549,7 +563,6 @@ async function ejecutarCrearRutina(args: CrearRutinaArgs): Promise<{
     id: rutinaId,
     nombre: args.nombre,
     ejerciciosCount: ejerciciosEnRutina.length,
-    ejerciciosCreados,
   };
 }
 
@@ -596,9 +609,8 @@ async function ejecutarActualizarPlanificacionSemanal(
 /**
  * Fecha actual del sistema (formato YYYY-MM-DD), usada solo como último recurso
  * cuando ni el agente ni el usuario especifican una fecha.
- * En flujos normales, la fecha por defecto debe venir de FECHA_ACTUAL del prompt;
- * esta función existe para mantener funcionalidad legacy mientras se consolida
- * el uso de fechaDefault.
+ * En flujos normales, la fecha efectiva debe venir explícitamente en `fecha`
+ * desde FECHA_ACTUAL del prompt.
  */
 function fechaYHoraActualDelSistema() {
   const ahora = new Date();
@@ -615,10 +627,8 @@ function horaActualDelSistema() {
 }
 
 async function ejecutarRegistrarPeso(args: RegistrarPesoArgs): Promise<{ valor: number; fecha: string; hora: string }> {
-  const fecha = args.fechaDefault ?? args.fecha ?? fechaYHoraActualDelSistema().fecha;
-  const hora = args.hora ?? (args.fecha != null || args.fechaDefault != null ? horaActualDelSistema() : "00:00");
-  // Prioridad de fecha: lo que el agente sugiere (fechaDefault) > lo que explícitamente pasa (fecha) > fecha local actual.
-  const fechaEfectiva = fecha;
+  const fechaEfectiva = args.fecha ?? fechaYHoraActualDelSistema().fecha;
+  const hora = args.hora ?? horaActualDelSistema();
 
   await db.pesos.add({
     fecha: fechaEfectiva,
@@ -676,11 +686,8 @@ async function ejecutarRegistrarEntrenamiento(
   tipo: "rutina" | "libre";
   rutinaNombre?: string;
   ejerciciosCount: number;
-  ejerciciosCreados: string[];
 }> {
-  const fecha = args.fecha ?? args.fechaDefault ?? fechaYHoraActualDelSistema().fecha;
-  const ejerciciosCreados: string[] = [];
-
+  const fecha = args.fecha ?? fechaYHoraActualDelSistema().fecha;
   let ejerciciosReales: EjercicioReal[];
   let rutinaId: string;
   let rutinaSnapshot: string | undefined;
@@ -715,15 +722,22 @@ async function ejecutarRegistrarEntrenamiento(
     const resueltos = await Promise.all(
       args.ejercicios.map(async (ej: EjercicioRealArgs) => {
         const eId = await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre);
-        if (eId && !ej.ejercicioId) {
-          ejerciciosCreados.push(ej.ejercicioNombre ?? eId);
-        }
         return { ...ej, resolvedId: eId };
       }),
     );
 
-    const validos = resueltos.filter((e) => e.resolvedId);
+    const noResueltos = resueltos.filter((e) => !e.resolvedId);
+    if (noResueltos.length > 0) {
+      const nombres = noResueltos.map(
+        (ej) => ej.ejercicioNombre ?? ej.ejercicioId ?? "desconocido",
+      );
+      throw new Error(
+        `No se encontraron en el catálogo los ejercicios: ${nombres.join(", ")}. ` +
+        "Crea primero cada ejercicio con crear_ejercicio y vuelve a intentarlo.",
+      );
+    }
 
+    const validos = resueltos;
     ejerciciosReales = validos.map((ej) => ({
       ejercicioId: ej.resolvedId!,
       series: ej.series.map((s) => ({
@@ -760,7 +774,6 @@ async function ejecutarRegistrarEntrenamiento(
     tipo,
     rutinaNombre: rutinaSnapshot,
     ejerciciosCount: ejerciciosReales.length,
-    ejerciciosCreados,
   };
 }
 
@@ -772,7 +785,6 @@ async function ejecutarEditarEntrenamiento(
   ejerciciosAgregados: number;
   ejerciciosQuitados: number;
   ejerciciosModificados: number;
-  ejerciciosCreados: string[];
 }> {
   // ── Búsqueda optimizada con índice compuesto [rutinaId+fecha] ──
   let logId: number | undefined;
@@ -836,26 +848,22 @@ async function ejecutarEditarEntrenamiento(
   }
 
   let ejercicios = [...log.ejercicios];
-  const ejerciciosCreados: string[] = [];
   let ejerciciosAgregados = 0;
   let ejerciciosQuitados = 0;
   let ejerciciosModificados = 0;
 
   // ── Quitar ejercicios ───────────────────────────────────────────
   if (args.ejerciciosQuitar && args.ejerciciosQuitar.length > 0) {
-    const idsAQuitar = await Promise.all(
-      args.ejerciciosQuitar.map(async (eq) => {
-        if (eq.ejercicioId) return eq.ejercicioId;
-        if (eq.ejercicioNombre) {
-          const ej = await db.ejercicios
-            .filter((e) => e.nombre.toLowerCase() === eq.ejercicioNombre!.toLowerCase())
-            .first();
-          return ej?.id ?? null;
-        }
-        return null;
-      }),
+    const idsResueltos = await Promise.all(
+      args.ejerciciosQuitar.map((eq) => requireEjercicioId(eq.ejercicioId, eq.ejercicioNombre)),
     );
-    const idsSet = new Set(idsAQuitar.filter((id): id is string => id !== null));
+    const idsFueraDeRutina = idsResueltos.filter(
+      (id) => !ejercicios.some((ej) => ej.ejercicioId === id),
+    );
+    if (idsFueraDeRutina.length > 0) {
+      throw new Error("Uno o más ejercicios a quitar no pertenecen a la rutina indicada.");
+    }
+    const idsSet = new Set(idsResueltos);
     const antesDeFiltrar = ejercicios.length;
     ejercicios = ejercicios.filter((ej) => !idsSet.has(ej.ejercicioId));
     ejerciciosQuitados = antesDeFiltrar - ejercicios.length;
@@ -870,22 +878,25 @@ async function ejecutarEditarEntrenamiento(
       let targetId: string | null = null;
       if (mod.ejercicioId) targetId = mod.ejercicioId;
       if (!targetId && mod.ejercicioNombre) {
-        const ej = await db.ejercicios
-          .filter((e) => e.nombre.toLowerCase() === mod.ejercicioNombre!.toLowerCase())
-          .first();
-        targetId = ej?.id ?? null;
+        targetId = await requireEjercicioId(undefined, mod.ejercicioNombre);
       }
 
-      if (!targetId) continue;
+      if (!targetId) {
+        targetId = await requireEjercicioId(mod.ejercicioId, mod.ejercicioNombre);
+      }
 
       // Encontrar el ejercicio en el log
       const idx = ejercicios.findIndex((ej) => ej.ejercicioId === targetId);
-      if (idx === -1) continue;
+      if (idx === -1) {
+        throw new Error("El ejercicio a modificar no pertenece al entrenamiento indicado.");
+      }
 
       // Aplicar modificaciones a las series indicadas
       const seriesMod = [...ejercicios[idx].series];
       for (const sMod of mod.series) {
-        if (sMod.serieIdx < 0 || sMod.serieIdx >= seriesMod.length) continue;
+        if (sMod.serieIdx < 0 || sMod.serieIdx >= seriesMod.length) {
+          throw new Error(`La serie ${sMod.serieIdx} no existe para el ejercicio indicado.`);
+        }
         const actual = seriesMod[sMod.serieIdx];
         seriesMod[sMod.serieIdx] = {
           ...actual,
@@ -908,16 +919,22 @@ async function ejecutarEditarEntrenamiento(
     const resueltos = await Promise.all(
       args.ejerciciosAgregar.map(async (ej: EjercicioRealArgs) => {
         const eId = await resolveEjercicio(ej.ejercicioId, ej.ejercicioNombre);
-        if (eId && !ej.ejercicioId) {
-          ejerciciosCreados.push(ej.ejercicioNombre ?? eId);
-        }
         return { ...ej, resolvedId: eId };
       }),
     );
 
-    const validos = resueltos.filter((e) => e.resolvedId);
+    const noResueltos = resueltos.filter((e) => !e.resolvedId);
+    if (noResueltos.length > 0) {
+      const nombres = noResueltos.map(
+        (ej) => ej.ejercicioNombre ?? ej.ejercicioId ?? "desconocido",
+      );
+      throw new Error(
+        `No se encontraron en el catálogo los ejercicios: ${nombres.join(", ")}. ` +
+        "Crea primero cada ejercicio con crear_ejercicio y vuelve a intentarlo.",
+      );
+    }
 
-    const nuevosEjercicios: EjercicioReal[] = validos.map((ej) => ({
+    const nuevosEjercicios: EjercicioReal[] = resueltos.map((ej) => ({
       ejercicioId: ej.resolvedId!,
       series: ej.series.map((s) => ({
         completado: s.completado ?? true,
@@ -946,7 +963,6 @@ async function ejecutarEditarEntrenamiento(
     ejerciciosAgregados,
     ejerciciosQuitados,
     ejerciciosModificados,
-    ejerciciosCreados,
   };
 }
 
@@ -962,7 +978,7 @@ export interface ToolExecutionResult {
  * Ejecuta una llamada a función confirmada por el usuario.
  * Devuelve un resultado estructurado con mensaje legible.
  */
-export async function executeFunctionCall(
+async function executeFunctionCallInTransaction(
   call: FunctionCallArgs,
 ): Promise<ToolExecutionResult> {
   try {
@@ -988,13 +1004,9 @@ export async function executeFunctionCall(
       }
       case "crear_rutina": {
         const result = await ejecutarCrearRutina(call.args);
-        let extra = "";
-        if (result.ejerciciosCreados.length > 0) {
-          extra = ` Se crearon ${result.ejerciciosCreados.length} ejercicios nuevos: ${result.ejerciciosCreados.join(", ")}.`;
-        }
         return {
           success: true,
-          message: `Rutina "${result.nombre}" creada con ${result.ejerciciosCount} ejercicios.${extra}`,
+          message: `Rutina "${result.nombre}" creada con ${result.ejerciciosCount} ejercicios.`,
           data: result as unknown as Record<string, unknown>,
         };
       }
@@ -1068,13 +1080,9 @@ export async function executeFunctionCall(
         const tipo = result.tipo === "rutina"
           ? `Rutina "${result.rutinaNombre}"`
           : "Entrenamiento libre";
-        let extra = "";
-        if (result.ejerciciosCreados.length > 0) {
-          extra = ` Se crearon ${result.ejerciciosCreados.length} ejercicios nuevos: ${result.ejerciciosCreados.join(", ")}.`;
-        }
         return {
           success: true,
-          message: `${tipo} registrado (${result.fecha}) con ${result.ejerciciosCount} ejercicios.${extra}`,
+          message: `${tipo} registrado (${result.fecha}) con ${result.ejerciciosCount} ejercicios.`,
           data: result as unknown as Record<string, unknown>,
         };
       }
@@ -1085,13 +1093,9 @@ export async function executeFunctionCall(
         if (result.ejerciciosQuitados > 0) cambios.push(`${result.ejerciciosQuitados} ejercicios quitados`);
         if (result.ejerciciosModificados > 0) cambios.push(`${result.ejerciciosModificados} ejercicios modificados`);
         const detalle = cambios.length > 0 ? ` (${cambios.join(", ")})` : "";
-        let extra = "";
-        if (result.ejerciciosCreados.length > 0) {
-          extra = ` Se crearon ${result.ejerciciosCreados.length} ejercicios nuevos: ${result.ejerciciosCreados.join(", ")}.`;
-        }
         return {
           success: true,
-          message: `Entrenamiento del ${result.fecha} ("${result.rutinaNombre}") actualizado${detalle}.${extra}`,
+          message: `Entrenamiento del ${result.fecha} ("${result.rutinaNombre}") actualizado${detalle}.`,
           data: result as unknown as Record<string, unknown>,
         };
       }
@@ -1107,5 +1111,63 @@ export async function executeFunctionCall(
       success: false,
       message: `Error al ejecutar ${call.name}: ${errMsg}`,
     };
+  }
+}
+
+const TOOL_TRANSACTION_TABLES = [
+  db.ejercicios,
+  db.carpetas,
+  db.rutinas,
+  db.logsEntrenamientos,
+  db.pesos,
+  db.planificacionSemanal,
+  db.perfil_usuario,
+  db.sesiones_chat,
+] as const;
+
+/** Ejecuta una tool confirmada dentro de una transacción atómica. */
+export async function executeFunctionCall(
+  call: FunctionCallArgs,
+): Promise<ToolExecutionResult> {
+  try {
+    return await db.transaction("rw", TOOL_TRANSACTION_TABLES, async () => {
+      const result = await executeFunctionCallInTransaction(call);
+      if (!result.success) throw new Error(result.message);
+      return result;
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return {
+      success: false,
+      message: `Transacción cancelada para ${call.name}: ${message}`,
+    };
+  }
+}
+
+/**
+ * Ejecuta todas las tools de una misma propuesta en una única transacción.
+ * Si una falla, se revierten también las anteriores.
+ */
+export async function executeFunctionCalls(
+  calls: FunctionCallArgs[],
+): Promise<ToolExecutionResult[]> {
+  if (calls.length === 0) return [];
+
+  try {
+    return await db.transaction("rw", TOOL_TRANSACTION_TABLES, async () => {
+      const results: ToolExecutionResult[] = [];
+      for (const call of calls) {
+        const result = await executeFunctionCallInTransaction(call);
+        if (!result.success) throw new Error(result.message);
+        results.push(result);
+      }
+      return results;
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return calls.map((call) => ({
+      success: false,
+      message: `Transacción cancelada para ${call.name}: ${message}`,
+    }));
   }
 }

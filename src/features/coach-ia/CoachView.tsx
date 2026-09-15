@@ -33,7 +33,7 @@ import {
   type GeminiResult,
   type FunctionCallProposal,
 } from "./services/geminiService";
-import { executeFunctionCall } from "./services/toolExecutor";
+import { executeFunctionCalls } from "./services/toolExecutor";
 import type { FunctionCallArgs } from "./services/toolDefinitions";
 import { PageHeader } from "../../components/PageHeader";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -193,63 +193,41 @@ export function CoachView() {
     if (!sesion) return;
 
     const mensajes = sesion.mensajes;
+    const pendientes = mensajes.filter((m, index) => {
+      if (m.role !== "model" || !m.functionCall) return false;
+      return !mensajes.slice(index + 1).some(
+        (post) =>
+          post.role === "user" &&
+          (post.functionResponse?.name === m.functionCall!.name ||
+            post.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
+      );
+    });
 
-    // Encontrar functionCalls del modelo que no han sido respondidos
-    for (let i = 0; i < mensajes.length; i++) {
-      const m = mensajes[i];
-      if (m.role === "model" && m.functionCall) {
-        // Verificar si ya fue respondido en mensajes posteriores
-        const yaRespondido = mensajes
-          .slice(i + 1)
-          .some(
-            (post) =>
-              post.role === "user" &&
-              (post.functionResponse?.name === m.functionCall!.name ||
-                post.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
-          );
+    if (pendientes.length === 0) return;
 
-        if (yaRespondido) continue;
+    const resultados = await executeFunctionCalls(
+      pendientes.map((m) => ({
+        name: m.functionCall!.name,
+        args: m.functionCall!.args,
+      }) as unknown as FunctionCallArgs),
+    );
 
-        // Ejecutar la función
-        try {
-          const result = await executeFunctionCall({
-            name: m.functionCall.name,
-            args: m.functionCall.args,
-          } as unknown as FunctionCallArgs);
-
-          const success = result?.success === true;
-          const msgRespuesta: MensajeChat = {
-            id: msgId(),
-            role: "user",
-            texto: success
-              ? `[✓] ${m.functionCall.name} ejecutado correctamente.`
-              : `[✗] ${m.functionCall.name} falló: ${result?.message ?? "error desconocido"}`,
-            timestamp: new Date().toISOString(),
-            functionResponse: {
-              name: m.functionCall.name,
-              response: result as unknown as Record<string, unknown>,
-            },
-          };
-          await agregarMensajeASesion(sId, msgRespuesta);
-        } catch (err) {
-          const errMsg =
-            err instanceof Error ? err.message : "error desconocido";
-          const msgRespuesta: MensajeChat = {
-            id: msgId(),
-            role: "user",
-            texto: `[✗] ${m.functionCall.name} falló: ${errMsg}`,
-            timestamp: new Date().toISOString(),
-            functionResponse: {
-              name: m.functionCall.name,
-              response: {
-                success: false,
-                error: errMsg,
-              },
-            },
-          };
-          await agregarMensajeASesion(sId, msgRespuesta);
-        }
-      }
+    for (let index = 0; index < pendientes.length; index++) {
+      const propuesta = pendientes[index];
+      const result = resultados[index];
+      const success = result.success === true;
+      await agregarMensajeASesion(sId, {
+        id: msgId(),
+        role: "user",
+        texto: success
+          ? `[✓] ${propuesta.functionCall!.name} ejecutado correctamente.`
+          : `[✗] ${propuesta.functionCall!.name} falló: ${result.message}`,
+        timestamp: new Date().toISOString(),
+        functionResponse: {
+          name: propuesta.functionCall!.name,
+          response: result as unknown as Record<string, unknown>,
+        },
+      });
     }
   }, []);
 
