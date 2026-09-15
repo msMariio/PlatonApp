@@ -100,11 +100,15 @@ export interface EditarCarpetaArgs {
 export interface RegistrarPesoArgs {
   valor: number;
   fecha?: string;
+  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
+  fechaDefault?: string;
   hora?: string;
 }
 
 export interface EditarPesoArgs {
   fecha: string;
+  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
+  fechaDefault?: string;
   hora?: string;
   nuevoValor?: number;
 }
@@ -126,6 +130,8 @@ export interface EjercicioRealArgs {
 
 export interface RegistrarEntrenamientoArgs {
   fecha?: string;
+  /** Fecha por defecto recomendada por el agente, proveniente de FECHA_ACTUAL del snapshot. */
+  fechaDefault?: string;
   rutinaId?: string;
   rutinaNombre?: string;
   ejercicios?: EjercicioRealArgs[];

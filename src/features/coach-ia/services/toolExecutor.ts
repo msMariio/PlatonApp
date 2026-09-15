@@ -565,17 +565,29 @@ async function ejecutarActualizarPlanificacionSemanal(
   return { diasModificados, cambios };
 }
 
+/**
+ * Hora actual del sistema (solo para derivar hora cuando fecha ya está dada).
+ * En flujos normales, la fecha por defecto debe venir de FECHA_ACTUAL del prompt,
+ * no de new Date(). La función de abajo se usa solo para la hora cuando la fecha
+ * ya fue decidida.
+ */
+function horaActualDelSistema() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 async function ejecutarRegistrarPeso(args: RegistrarPesoArgs): Promise<{ valor: number; fecha: string; hora: string }> {
-  const fecha = args.fecha ?? new Date().toISOString().slice(0, 10);
-  const hora = args.hora ?? new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const fecha = args.fechaDefault ?? args.fecha ?? fechaYHoraActualDelSistema().fecha;
+  const hora = args.hora ?? (args.fecha != null || args.fechaDefault != null ? horaActualDelSistema() : "00:00");
+  // Prioridad de fecha: lo que el agente sugiere (fechaDefault) > lo que explícitamente pasa (fecha) > fecha local actual.
+  const fechaEfectiva = fecha;
 
   await db.pesos.add({
-    fecha,
+    fecha: fechaEfectiva,
     hora,
     valor: args.valor,
   });
 
-  return { valor: args.valor, fecha, hora };
+  return { valor: args.valor, fecha: fechaEfectiva, hora };
 }
 
 async function ejecutarEditarPeso(args: EditarPesoArgs): Promise<{ valor: number; fecha: string; hora: string }> {
@@ -627,7 +639,7 @@ async function ejecutarRegistrarEntrenamiento(
   ejerciciosCount: number;
   ejerciciosCreados: string[];
 }> {
-  const fecha = args.fecha ?? new Date().toISOString().slice(0, 10);
+  const fecha = args.fecha ?? args.fechaDefault ?? fechaYHoraActualDelSistema().fecha;
   const ejerciciosCreados: string[] = [];
 
   let ejerciciosReales: EjercicioReal[];

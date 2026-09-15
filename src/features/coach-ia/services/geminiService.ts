@@ -388,7 +388,28 @@ async function calcularMetricasFuerza(
  * Construye el LOCAL_SNAPSHOT con datos del atleta (perfil, peso,
  * ejercicios, rutinas, planificación e historial de entrenamiento).
  */
-async function buildLocalSnapshot(): Promise<string> {
+// ═══════════════════════════════════════════════════════════════════════
+//  FECHA ACTUAL DEL SISTEMA (única fuente de verdad para "hoy") 
+//  Se recalcula en cada llamada para que el agente siempre trabaje con
+//  la fecha del momento exacto en que se evalúa el mensaje, sin
+//  depender de fechas de sesiones anteriores o de new Date() en otras
+//  partes del código (ej: toolExecutor).
+// ═══════════════════════════════════════════════════════════════════════
+function obtenerFechaActualDelSistema(): {
+  fechaHoy: string;
+  diaSemanaHoy: string;
+} {
+  const DIAS_ES = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const ahora = new Date();
+  const fechaHoy = ahora.toISOString().slice(0, 10);
+  const diaSemanaHoy = DIAS_ES[ahora.getDay()];
+  return { fechaHoy, diaSemanaHoy };
+}
+
+async function buildLocalSnapshot(
+  fechaHoy: string,
+  diaSemanaHoy: string,
+): Promise<string> {
   const perfil = await db.perfil_usuario.get(1);
 
   // Historial completo de pesos (no solo el último)
@@ -403,8 +424,7 @@ async function buildLocalSnapshot(): Promise<string> {
   const ultimoEMA = ema7.length > 0 ? ema7[ema7.length - 1] : null;
   const velocidadSemanal = calcularVelocidadSemanal(diarios, ema7);
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  const hoy = new Date(fechaHoy + "T00:00:00");
 
   const tendenciaPeso =
     velocidadSemanal == null
@@ -424,7 +444,7 @@ async function buildLocalSnapshot(): Promise<string> {
   const logsTodos = await db.logsEntrenamientos.toArray();
   const metricasFuerza = await calcularMetricasFuerza(ejercicios, logsTodos, pesosOrdenados);
 
-  const hace28Dias = new Date();
+  const hace28Dias = new Date(hoy);
   hace28Dias.setDate(hace28Dias.getDate() - 28);
   const fechaCorte = hace28Dias.toISOString().slice(0, 10);
 
@@ -463,11 +483,6 @@ async function buildLocalSnapshot(): Promise<string> {
       }
     }
   }
-
-  // Día de la semana actual en español para que la IA sepa qué día es "hoy"
-  const DIAS_ES = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
-  const fechaHoy = hoy.toISOString().slice(0, 10);
-  const diaSemanaHoy = DIAS_ES[hoy.getDay()];
 
   const snapshot = {
     FECHA_ACTUAL: `${fechaHoy} (${diaSemanaHoy})`,
@@ -733,7 +748,8 @@ export async function enviarMensajeAGemini(
     );
   }
 
-  const snapshot = await buildLocalSnapshot();
+  const { fechaHoy, diaSemanaHoy } = obtenerFechaActualDelSistema();
+  const snapshot = await buildLocalSnapshot(fechaHoy, diaSemanaHoy);
 
   const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
   const systemPrompt = SYSTEM_PROMPT_PERFORMANCE_OS.replace(
@@ -744,11 +760,12 @@ export async function enviarMensajeAGemini(
   const systemInstruction = `${systemPrompt}
 
 ================================================================
-LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
+LOCAL_SNAPSHOT — DATOS DEL ATLETA (SNAPSHOT_GENERADO: ${fechaHoy})
 ================================================================
 ${snapshot}
 
-[//] UTILIZA ESTOS DATOS COMO REFERENCIA EXCLUSIVA. NO INVENTES INFORMACIÓN ADICIONAL.`;
+[//] SNAPSHOT_GENERADO es solo un sello de frescor del snapshot. NO lo uses como referencia de "hoy".
+[//] Usa EXCLUSIVAMENTE el campo FECHA_ACTUAL del snapshot para saber qué día es hoy, mañana o ayer.`;
 
   // Convertir mensajes previos
   const contents: GeminiContent[] = mensajesToGeminiContents(mensajesPrevios);
@@ -780,7 +797,8 @@ export async function enviarRespuestaFuncionAGemini(
     );
   }
 
-  const snapshot = await buildLocalSnapshot();
+  const { fechaHoy, diaSemanaHoy } = obtenerFechaActualDelSistema();
+  const snapshot = await buildLocalSnapshot(fechaHoy, diaSemanaHoy);
 
   const coachName = perfil?.nombreCoach?.trim() || "PERFORMANCE_OS";
   const systemPrompt = SYSTEM_PROMPT_PERFORMANCE_OS.replace(
@@ -791,11 +809,12 @@ export async function enviarRespuestaFuncionAGemini(
   const systemInstruction = `${systemPrompt}
 
 ================================================================
-LOCAL_SNAPSHOT — DATOS DEL ATLETA (Actualizado: ${new Date().toISOString().slice(0, 10)})
+LOCAL_SNAPSHOT — DATOS DEL ATLETA (SNAPSHOT_GENERADO: ${fechaHoy})
 ================================================================
 ${snapshot}
 
-[//] UTILIZA ESTOS DATOS COMO REFERENCIA EXCLUSIVA. NO INVENTES INFORMACIÓN ADICIONAL.`;
+[//] SNAPSHOT_GENERADO es solo un sello de frescor del snapshot. NO lo uses como referencia de "hoy".
+[//] Usa EXCLUSIVAMENTE el campo FECHA_ACTUAL del snapshot para saber qué día es hoy, mañana o ayer.`;
 
   const contents = mensajesToGeminiContents(mensajesCompletos);
 
