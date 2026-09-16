@@ -642,6 +642,22 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 
 ## Registro de cambios
 
+### 2026-09-16 — Sustituciones vinculadas a instancias de rutina
+
+- **Cambio:** las sustituciones del Logger dejan de identificarse por posición y se vinculan al `id` estable de `EjercicioEnRutina`; el renderizado y la actualización explícita de plantilla conservan esa relación aunque se eliminen ejercicios o cambie la posición de la lista.
+- **Motivación:** evitar que una modificación posterior del orden o de la lista aplique una sustitución a otra instancia.
+- **Áreas afectadas:** `src/features/training-logger/TrainingLoggerView.tsx`, `src/features/training-logger/utils/compareWorkoutWithTemplate.ts` y este README.
+- **Contrato nuevo:** `SustitucionesLogger` usa como clave el identificador de la instancia de sesión y guarda `rutinaEjercicioId`; `actualizarTemplateConMejoras()` recibe los IDs de instancia de la sesión para resolver el ejercicio real sustituido sin depender de índices.
+- **Migración/verificación:** no requiere migración de IndexedDB ni cambios en `LogEntrenamiento`; ejecutar `npm run build`.
+
+### 2026-09-16 — Sustitución temporal de ejercicios en el Logger
+
+- **Cambio:** el Logger permite sustituir un ejercicio desde su cabecera mediante el catálogo maestro, conserva la sustitución únicamente en la sesión activa y recupera placeholders desde el último log global del ejercicio nuevo. El diálogo final muestra la sustitución y solo modifica la plantilla si se confirma `ACTUALIZAR PLANTILLA`.
+- **Motivación:** permitir alternativas cuando una máquina está ocupada sin contaminar la rutina original ni perder referencias reales del historial del ejercicio alternativo.
+- **Áreas afectadas:** `src/features/training-logger/TrainingLoggerView.tsx`, `src/features/training-logger/data.ts`, `src/features/training-logger/components/EjercicioLoggerCard.tsx`, `src/features/training-logger/components/OverloadDetectionModal.tsx`, `src/features/training-logger/utils/compareWorkoutWithTemplate.ts`, `src/features/rutinas/components/SelectEjercicioDialog.tsx` y este README.
+- **Contrato nuevo:** `LogEntrenamiento.ejercicios[].ejercicioId` guarda el maestro realmente realizado; `getUltimosLogsPorEjercicio()` proporciona el historial global para placeholders; las sustituciones se mantienen en estado de UI y `actualizarTemplateConMejoras()` solo las persiste en `rutinas` cuando el usuario confirma explícitamente.
+- **Migración/verificación:** no requiere migración de IndexedDB ni cambios en snapshots históricos; ejecutar `npm run build`.
+
 ### 2026-09-16 — Adherencia en fines de semana
 
 - **Cambio:** la métrica de adherencia pasa a recorrer siempre los siete días de la semana y cuenta un día como planificado cuando tiene `rutinaId`, sin exigir el flag `activo`. Además, `ensurePlanificacionDefault()` normaliza planes antiguos rellenando los días ausentes y los `activo` no booleanos, y `setRutinaDelDia()` marca el día como activo al asignarle una rutina.

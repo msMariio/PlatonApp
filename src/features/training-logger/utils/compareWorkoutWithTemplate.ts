@@ -40,14 +40,39 @@ export interface EjercicioMejora {
  * en la plantilla). Ejercicios añadidos ad-hoc (sin correspondencia)
  * se ignoran.
  */
+export type SustitucionesLogger = Record<
+  string,
+  {
+    rutinaEjercicioId: string;
+    originalEjercicioId: string;
+    nuevoEjercicioId: string;
+  }
+>;
+
+function plantillaConSustituciones(
+  rutina: Rutina,
+  sustituciones?: SustitucionesLogger,
+) {
+  return rutina.ejercicios.map((ejTemplate) => {
+    const sustitucion = Object.values(sustituciones ?? {}).find(
+      (item) => item.rutinaEjercicioId === ejTemplate.id,
+    );
+    return sustitucion
+      ? { ...ejTemplate, ejercicioId: sustitucion.nuevoEjercicioId }
+      : ejTemplate;
+  });
+}
+
 export function compareWorkoutWithTemplate(
   ejercicios: EjercicioReal[],
   rutina: Rutina,
+  sustituciones?: SustitucionesLogger,
 ): EjercicioMejora[] {
   const resultado: EjercicioMejora[] = [];
+  const ejerciciosPlantilla = plantillaConSustituciones(rutina, sustituciones);
 
   for (const ejReal of ejercicios) {
-    const ejTemplate = rutina.ejercicios.find(
+    const ejTemplate = ejerciciosPlantilla.find(
       (e) => e.ejercicioId === ejReal.ejercicioId,
     );
     if (!ejTemplate) continue;
@@ -119,11 +144,21 @@ export async function actualizarTemplateConMejoras(
   rutinaId: string,
   ejercicios: EjercicioReal[],
   rutina: Rutina,
+  sustituciones?: SustitucionesLogger,
+  instancias?: string[],
 ): Promise<void> {
-  const ejerciciosActualizados = rutina.ejercicios.map((ejTemplate) => {
-    const ejReal = ejercicios.find(
-      (e) => e.ejercicioId === ejTemplate.ejercicioId,
+  const ejerciciosPlantilla = plantillaConSustituciones(rutina, sustituciones);
+  const ejerciciosActualizados = ejerciciosPlantilla.map((ejTemplate) => {
+    const sustitucion = Object.entries(sustituciones ?? {}).find(
+      ([, item]) => item.rutinaEjercicioId === ejTemplate.id,
     );
+    const idxSesion = sustitucion
+      ? (instancias?.indexOf(sustitucion[0]) ?? -1)
+      : -1;
+    const ejReal =
+      idxSesion >= 0
+        ? ejercicios[idxSesion]
+        : ejercicios.find((e) => e.ejercicioId === ejTemplate.ejercicioId);
     if (!ejReal) return ejTemplate;
 
     const completadas = ejReal.series.filter((s) => s.completado);

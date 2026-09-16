@@ -16,6 +16,7 @@ import type { EjercicioMejora } from "../utils/compareWorkoutWithTemplate";
 type Props = {
   open: boolean;
   mejoras: EjercicioMejora[];
+  sustituciones?: { anterior: string; nuevo: string }[];
   onUpdateTemplate: () => void;
   onSkipUpdate: () => void;
   onClose: () => void;
@@ -39,6 +40,7 @@ function fmtDelta(
 export function OverloadDetectionModal({
   open,
   mejoras,
+  sustituciones = [],
   onUpdateTemplate,
   onSkipUpdate,
   onClose,
@@ -90,9 +92,26 @@ export function OverloadDetectionModal({
         <DialogContentText
           sx={{ mb: 2.5, letterSpacing: "0.03em", color: "text.secondary" }}
         >
-          SE HAN DETECTADO MEJORAS RESPECTO A LA PLANTILLA ACTUAL. ¿QUIERES
-          ACTUALIZAR LOS OBJETIVOS PARA LA PRÓXIMA SESIÓN?
+          {sustituciones.length > 0
+            ? "SE HAN DETECTADO SUSTITUCIONES EN ESTA SESIÓN. ¿QUIERES APLICARLAS A LA PLANTILLA?"
+            : "SE HAN DETECTADO MEJORAS RESPECTO A LA PLANTILLA ACTUAL. ¿QUIERES ACTUALIZAR LOS OBJETIVOS PARA LA PRÓXIMA SESIÓN?"}
         </DialogContentText>
+
+        {sustituciones.length > 0 && (
+          <Box sx={{ mb: 2.5 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ color: "primary.main", fontWeight: "bold", letterSpacing: "0.05em", mb: 1 }}
+            >
+              CAMBIOS DE EJERCICIO
+            </Typography>
+            {sustituciones.map((sustitucion) => (
+              <Typography key={`${sustitucion.anterior}-${sustitucion.nuevo}`} variant="body2" sx={{ ml: 1.5, mb: 0.5 }}>
+                {sustitucion.anterior.toUpperCase()} → <Box component="span" sx={{ color: "primary.main", fontWeight: "bold" }}>{sustitucion.nuevo.toUpperCase()}</Box>
+              </Typography>
+            ))}
+          </Box>
+        )}
 
         {mejoras.map((ej, ejIdx) => (
           <Box key={ej.ejercicioId} sx={{ mb: ejIdx < mejoras.length - 1 ? 2.5 : 0 }}>
@@ -326,7 +345,7 @@ export function OverloadDetectionModal({
             },
           }}
         >
-          ACTUALIZAR PLANTILLA
+          {sustituciones.length > 0 ? "APLICAR CAMBIOS Y ACTUALIZAR" : "ACTUALIZAR PLANTILLA"}
         </Button>
       </DialogActions>
     </Dialog>

@@ -20,6 +20,7 @@ import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   db,
+  uid,
   type EjercicioReal,
   type LogEntrenamiento,
   type Rutina,
@@ -38,6 +39,7 @@ import {
 } from "./utils/compareWorkoutWithTemplate";
 import {
   getUltimoLogDeRutina,
+  getUltimosLogsPorEjercicio,
   guardarLogEntrenamiento,
   actualizarLogEntrenamiento,
   eliminarLogEntrenamiento,
@@ -84,11 +86,29 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
   const [ultimoLog, setUltimoLog] = useState<LogEntrenamiento | undefined>();
   const [initialized, setInitialized] = useState(false);
   const [selectOpen, setSelectOpen] = useState(false);
+  const [replaceInstanceId, setReplaceInstanceId] = useState<string | null>(null);
+  const [ejercicioInstanceIds, setEjercicioInstanceIds] = useState<string[]>([]);
+  const [ultimosLogsPorEjercicio, setUltimosLogsPorEjercicio] = useState(
+    new Map<string, LogEntrenamiento>(),
+  );
+  const [sustituciones, setSustituciones] = useState<
+    Record<
+      string,
+      {
+        rutinaEjercicioId: string;
+        originalEjercicioId: string;
+        nuevoEjercicioId: string;
+      }
+    >
+  >({});
   const [notas, setNotas] = useState("");
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showOverloadModal, setShowOverloadModal] = useState(false);
   const [overloadDiff, setOverloadDiff] = useState<EjercicioMejora[]>([]);
+  const [overloadSubstitutions, setOverloadSubstitutions] = useState<
+    { anterior: string; nuevo: string }[]
+  >([]);
   const [personalRecords, setPersonalRecords] = useState<RecordPersonal[]>([]);
   const [showPersonalRecords, setShowPersonalRecords] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
@@ -101,11 +121,17 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     const init = async () => {
       if (!rutina) return;
 
+      const logsGlobales = await getUltimosLogsPorEjercicio();
+      if (cancelled) return;
+      setUltimosLogsPorEjercicio(logsGlobales);
+
       if (isEditMode && logId !== undefined) {
         const logExistente = await db.logsEntrenamientos.get(logId);
         if (cancelled) return;
         if (logExistente) {
           setEjercicios(logExistente.ejercicios);
+          setEjercicioInstanceIds(logExistente.ejercicios.map(() => uid()));
+          setSustituciones({});
           setNotas(logExistente.notas ?? "");
           const fechaLog = new Date(logExistente.fecha).toISOString().split("T")[0];
           setFecha(fechaLog);
@@ -129,6 +155,10 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
           ? []
           : buildEjerciciosRealesDesdeRutina(rutina, log);
         setEjercicios(iniciales);
+        setEjercicioInstanceIds(
+          isCustomLibre ? [] : rutina.ejercicios.map((ejercicio) => ejercicio.id),
+        );
+        setSustituciones({});
         setNotas("");
         initialSnapshot.current = JSON.stringify({
           ejercicios: iniciales,
@@ -192,11 +222,66 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
         ],
       },
     ]);
+    setEjercicioInstanceIds((prev) => [...prev, uid()]);
     setSelectOpen(false);
   };
 
+  const handleSelectEjercicio = (ejercicioId: string) => {
+    if (replaceInstanceId === null) {
+      handleAddEjercicio(ejercicioId);
+      return;
+    }
+
+    const instanceId = replaceInstanceId;
+    const idx = ejercicioInstanceIds.indexOf(instanceId);
+    const actual = ejercicios[idx];
+    if (!actual || idx < 0) return;
+    const originalEjercicioId =
+      sustituciones[instanceId]?.originalEjercicioId ?? actual.ejercicioId;
+    const rutinaEjercicioId =
+      sustituciones[instanceId]?.rutinaEjercicioId ?? instanceId;
+    setSustituciones((prev) => ({
+      ...prev,
+      [instanceId]: { rutinaEjercicioId, originalEjercicioId, nuevoEjercicioId: ejercicioId },
+    }));
+    setEjercicios((prev) =>
+      prev.map((ejercicio, i) =>
+        i === idx
+          ? {
+              ...ejercicio,
+              ejercicioId,
+              series: ejercicio.series.map(() => ({
+                peso: 0,
+                reps: 0,
+                duracionMinutos: 0,
+                distanciaKm: 0,
+                nivelInclinacion: 0,
+                completado: false,
+              })),
+            }
+          : ejercicio,
+      ),
+    );
+    setReplaceInstanceId(null);
+    setSelectOpen(false);
+  };
+
+  const handleReplaceEjercicio = (instanceId: string) => {
+    setReplaceInstanceId(instanceId);
+    setSelectOpen(true);
+  };
+
   const handleDeleteEjercicio = (idx: number) => {
+    const instanceId = ejercicioInstanceIds[idx];
     setEjercicios((prev) => prev.filter((_, i) => i !== idx));
+    setEjercicioInstanceIds((prev) => prev.filter((_, i) => i !== idx));
+    if (instanceId) {
+      setSustituciones((prev) => {
+        const next = { ...prev };
+        delete next[instanceId];
+        return next;
+      });
+    }
   };
 
   /** Guarda el entrenamiento (sin actualizar plantilla). */
@@ -251,9 +336,13 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     }
 
     // Comparar contra la plantilla para detectar sobrecarga progresiva
-    const diff = compareWorkoutWithTemplate(ejercicios, rutina);
+    const diff = compareWorkoutWithTemplate(ejercicios, rutina, sustituciones);
+    const sustitucionesParaMostrar = Object.values(sustituciones).map((s) => ({
+      anterior: ejerciciosCatalogo.find((e) => e.id === s.originalEjercicioId)?.nombre ?? s.originalEjercicioId,
+      nuevo: ejerciciosCatalogo.find((e) => e.id === s.nuevoEjercicioId)?.nombre ?? s.nuevoEjercicioId,
+    }));
 
-    if (diff.length === 0) {
+    if (diff.length === 0 && sustitucionesParaMostrar.length === 0) {
       // Sin mejoras detectadas → guardar directamente
       await ejecutarGuardadoSimple();
       return;
@@ -267,6 +356,7 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     }));
 
     setOverloadDiff(diffConNombre);
+    setOverloadSubstitutions(sustitucionesParaMostrar);
     setShowOverloadModal(true);
   }, [
     rutina,
@@ -274,6 +364,8 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     isCustomLibre,
     ejercicios,
     ejecutarGuardadoSimple,
+    sustituciones,
+    ejerciciosCatalogo,
   ]);
 
   /** Guardar + actualizar plantilla con las nuevas marcas. */
@@ -283,7 +375,13 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     setGuardando(true);
     try {
       try {
-        await actualizarTemplateConMejoras(rutinaId, ejercicios, rutina);
+        await actualizarTemplateConMejoras(
+          rutinaId,
+          ejercicios,
+          rutina,
+          sustituciones,
+          ejercicioInstanceIds,
+        );
       } catch {
         // Si falla la actualización de plantilla, seguimos guardando el log
       }
@@ -291,7 +389,14 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
     } finally {
       setGuardando(false);
     }
-  }, [rutina, rutinaId, ejercicios, ejecutarGuardadoSimple]);
+  }, [
+    rutina,
+    rutinaId,
+    ejercicios,
+    ejecutarGuardadoSimple,
+    sustituciones,
+    ejercicioInstanceIds,
+  ]);
 
   /** Guardar sin tocar la plantilla. */
   const handleSkipUpdate = useCallback(async () => {
@@ -365,16 +470,23 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
       ) : (
         ejercicios.map((ej, idx) => {
           const seriesPlaceholders = ej.series.map((_, sIdx) =>
-            getPlaceholderSerie(ej.ejercicioId, sIdx, rutina, ultimoLog)
+            getPlaceholderSerie(
+              ej.ejercicioId,
+              sIdx,
+              rutina,
+              sustituciones[ejercicioInstanceIds[idx]] ? undefined : ultimoLog,
+              ultimosLogsPorEjercicio.get(ej.ejercicioId),
+            ),
           );
           return (
             <EjercicioLoggerCard
-              key={`${ej.ejercicioId}-${idx}`}
+              key={ejercicioInstanceIds[idx]}
               ejercicio={ej}
               catalog={catalogoLookup.get(ej.ejercicioId)}
               placeholders={seriesPlaceholders}
               onChange={(next) => handleChangeEjercicio(idx, next)}
               onDelete={() => handleDeleteEjercicio(idx)}
+              onReplace={() => handleReplaceEjercicio(ejercicioInstanceIds[idx])}
             />
           );
         })
@@ -455,13 +567,15 @@ export function TrainingLoggerView({ rutinaId, onBack, onSaved, logId }: Props) 
       <SelectEjercicioDialog
         open={selectOpen}
         onClose={() => setSelectOpen(false)}
-        onPick={handleAddEjercicio}
+        onPick={handleSelectEjercicio}
+        title={replaceInstanceId === null ? "AÑADIR EJERCICIO" : "SUSTITUIR EJERCICIO"}
       />
 
       {/* Overload detection modal */}
       <OverloadDetectionModal
         open={showOverloadModal}
         mejoras={overloadDiff}
+        sustituciones={overloadSubstitutions}
         onUpdateTemplate={handleUpdateTemplate}
         onSkipUpdate={handleSkipUpdate}
         onClose={() => setShowOverloadModal(false)}

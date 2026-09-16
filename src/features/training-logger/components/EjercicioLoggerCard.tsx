@@ -1,6 +1,7 @@
 import { Box, Card, CardContent, IconButton, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import type { Ejercicio, EjercicioReal, SerieReal, TipoEjercicio } from "../../../core/db";
 import { SerieLoggerRow, type PlaceholderData } from "./SerieLoggerRow";
 
@@ -10,6 +11,7 @@ type Props = {
   placeholders: PlaceholderData[];
   onChange: (next: EjercicioReal) => void;
   onDelete?: () => void;
+  onReplace?: () => void;
 };
 
 export function EjercicioLoggerCard({
@@ -18,6 +20,7 @@ export function EjercicioLoggerCard({
   placeholders,
   onChange,
   onDelete,
+  onReplace,
 }: Props) {
   const tipo: TipoEjercicio = catalog?.tipo ?? "fuerza";
 
@@ -68,6 +71,27 @@ export function EjercicioLoggerCard({
                   : ""}
               </Typography>
             </Box>
+            {onReplace && (
+              <IconButton
+                size="small"
+                onClick={onReplace}
+                sx={{
+                  borderRadius: 0,
+                  color: "primary.main",
+                  border: 1,
+                  borderColor: "divider",
+                  "&:hover": {
+                    bgcolor: "primary.main",
+                    color: "primary.contrastText",
+                    borderColor: "primary.main",
+                  },
+                  touchAction: "manipulation",
+                }}
+                aria-label="Sustituir ejercicio del entrenamiento"
+              >
+                <SwapHorizIcon fontSize="small" />
+              </IconButton>
+            )}
             {onDelete && (
               <IconButton
                 size="small"

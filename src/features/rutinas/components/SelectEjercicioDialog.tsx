@@ -29,6 +29,8 @@ type Props = {
   onClose: () => void;
   /** Devuelve el ejercicioId (existente o recién creado). */
   onPick: (ejercicioId: string) => void;
+  /** Texto de cabecera adaptado al contexto de selección. */
+  title?: string;
   /** Si true, arranca directamente en el formulario de creación, saltando la lista. */
   startCreating?: boolean;
 };
@@ -45,7 +47,13 @@ const GRUPOS: GrupoMuscular[] = [
   "gluteo",
 ];
 
-export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = false }: Props) {
+export function SelectEjercicioDialog({
+  open,
+  onClose,
+  onPick,
+  title = "AÑADIR EJERCICIO",
+  startCreating = false,
+}: Props) {
   const ejercicios = useLiveQuery(() => db.ejercicios.toArray(), []) ?? [];
   const [filtro, setFiltro] = useState("");
   const [creando, setCreando] = useState(startCreating);
@@ -119,7 +127,7 @@ export function SelectEjercicioDialog({ open, onClose, onPick, startCreating = f
       }}
     >
       <DialogTitle sx={{ letterSpacing: "0.05em" }}>
-        AÑADIR EJERCICIO
+        {title}
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 4 }}>
         {creando ? (

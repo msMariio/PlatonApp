@@ -20,6 +20,18 @@ export async function getUltimoLogDeRutina(
   return logs.length > 0 ? logs[logs.length - 1] : undefined;
 }
 
+/** Devuelve el último log que contiene cada ejercicio, sin limitarlo a una rutina. */
+export async function getUltimosLogsPorEjercicio(): Promise<Map<string, LogEntrenamiento>> {
+  const logs = await db.logsEntrenamientos.orderBy("fecha").toArray();
+  const ultimos = new Map<string, LogEntrenamiento>();
+  for (const log of logs) {
+    for (const ejercicio of log.ejercicios) {
+      ultimos.set(ejercicio.ejercicioId, log);
+    }
+  }
+  return ultimos;
+}
+
 export async function guardarLogEntrenamiento(
   rutinaId: string,
   ejercicios: EjercicioReal[],
@@ -72,7 +84,8 @@ export function getPlaceholderSerie(
   ejercicioId: string,
   serieIdx: number,
   rutina: Rutina,
-  ultimoLog?: LogEntrenamiento
+  ultimoLog?: LogEntrenamiento,
+  ultimoLogGlobal?: LogEntrenamiento,
 ): {
   peso: number;
   reps: number;
@@ -84,7 +97,7 @@ export function getPlaceholderSerie(
   // Prioridad 1: último log de esta rutina para este ejercicio/serie
   const logEj = ultimoLog?.ejercicios.find(
     (e) => e.ejercicioId === ejercicioId
-  );
+  ) ?? ultimoLogGlobal?.ejercicios.find((e) => e.ejercicioId === ejercicioId);
   const logSerie = logEj?.series[serieIdx];
   if (logSerie) {
     return {
