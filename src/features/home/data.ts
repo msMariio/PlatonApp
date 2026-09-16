@@ -34,26 +34,50 @@ export async function readPlanificacionDefault(): Promise<
  * Versión seed: si no existe el plan, lo crea. Usa una transacción rw
  * para ser race-safe. Sólo se debe llamar desde handlers de usuario
  * (`onClick`, etc.) o desde un `useEffect`, nunca dentro de un observer.
+ *
+ * Además normaliza planes antiguos: garantiza que existan los siete días
+ * (incluidos sábado y domingo) y que cada uno tenga `activo` booleano. Un
+ * día sin `activo` quedaba fuera de métricas como la adherencia aunque el
+ * usuario tuviera una rutina planificada ese día.
  */
 export async function ensurePlanificacionDefault(): Promise<PlanificacionSemanal> {
   return db.transaction("rw", db.planificacionSemanal, async () => {
     const existing = await db.planificacionSemanal.get("default");
-    if (existing) return existing;
-    const nueva: PlanificacionSemanal = {
-      id: "default",
-      nombre: "Planificación por defecto",
-      dias: {
-        lunes: { rutinaId: null, activo: true },
-        martes: { rutinaId: null, activo: true },
-        miercoles: { rutinaId: null, activo: true },
-        jueves: { rutinaId: null, activo: true },
-        viernes: { rutinaId: null, activo: true },
-        sabado: { rutinaId: null, activo: true },
-        domingo: { rutinaId: null, activo: true },
-      },
-    };
-    await db.planificacionSemanal.add(nueva);
-    return nueva;
+    if (!existing) {
+      const nueva: PlanificacionSemanal = {
+        id: "default",
+        nombre: "Planificación por defecto",
+        dias: {
+          lunes: { rutinaId: null, activo: true },
+          martes: { rutinaId: null, activo: true },
+          miercoles: { rutinaId: null, activo: true },
+          jueves: { rutinaId: null, activo: true },
+          viernes: { rutinaId: null, activo: true },
+          sabado: { rutinaId: null, activo: true },
+          domingo: { rutinaId: null, activo: true },
+        },
+      };
+      await db.planificacionSemanal.add(nueva);
+      return nueva;
+    }
+
+    const dias = { ...existing.dias };
+    let normalizado = false;
+    for (const dia of DIAS_SEMANA) {
+      const config = dias[dia];
+      if (!config) {
+        dias[dia] = { rutinaId: null, activo: true };
+        normalizado = true;
+      } else if (typeof config.activo !== "boolean") {
+        dias[dia] = { ...config, activo: true };
+        normalizado = true;
+      }
+    }
+    if (!normalizado) return existing;
+
+    const plan: PlanificacionSemanal = { ...existing, dias };
+    await db.planificacionSemanal.put(plan);
+    return plan;
   });
 }
 
@@ -62,7 +86,13 @@ export async function setRutinaDelDia(
   rutinaId: string | null
 ): Promise<void> {
   const plan = await ensurePlanificacionDefault();
-  plan.dias[dia] = { ...plan.dias[dia], rutinaId };
+  // Asignar una rutina implica que el día está activo; marcar descanso
+  // conserva el estado previo del día.
+  plan.dias[dia] = {
+    ...plan.dias[dia],
+    rutinaId,
+    activo: rutinaId !== null ? true : plan.dias[dia]?.activo ?? true,
+  };
   await db.planificacionSemanal.put(plan);
 }
 

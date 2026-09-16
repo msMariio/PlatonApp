@@ -59,7 +59,7 @@ Si una rutina o ejercicio está referenciado por el historial, se archiva en vez
 
 - **Fuerza:** e1RM, delta de 30 días y fuerza relativa.
 - **Músculos:** volumen semanal, series efectivas, frecuencia, evolución de volumen, comparación semanal y alertas de grupos abandonados o con posible sobrecarga.
-- **Adherencia:** entrenamientos planificados/completados, porcentaje semanal, racha de días, sesiones omitidas y cumplimiento por rutina; cruza la planificación semanal con logs completados por fecha y rutina.
+- **Adherencia:** entrenamientos planificados/completados, porcentaje semanal, racha de días, sesiones omitidas y cumplimiento por rutina; cruza la planificación semanal con logs completados por fecha y rutina. Recorre siempre los siete días de la semana: una rutina planificada en sábado o domingo cuenta igual que la de diario.
 - La analítica muscular ignora cardio y ejercicios sin grupo muscular; no los convierte artificialmente en un músculo.
 
 - **Peso:** registros, edición, borrado, gráfica bruta y tendencia EMA-7.
@@ -641,6 +641,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-16 — Adherencia en fines de semana
+
+- **Cambio:** la métrica de adherencia pasa a recorrer siempre los siete días de la semana y cuenta un día como planificado cuando tiene `rutinaId`, sin exigir el flag `activo`. Además, `ensurePlanificacionDefault()` normaliza planes antiguos rellenando los días ausentes y los `activo` no booleanos, y `setRutinaDelDia()` marca el día como activo al asignarle una rutina.
+- **Motivación:** los planes antiguos podían no tener la clave de sábado o domingo; al asignarles una rutina desde `INICIO` se creaba la entrada sin `activo`, por lo que la sesión aparecía en la planificación pero desaparecía de la adherencia. Todas las rutinas planificadas deben contar, sin importar el día de la semana.
+- **Áreas afectadas:** `src/features/analytics/data.ts`, `src/features/home/data.ts` y este README.
+- **Contrato nuevo:** `calcularAdherenciaPlanificacion()` itera lunes-domingo y solo requiere `rutinaId`; `activo` es un campo heredado que ya no filtra la métrica. Cualquier consumidor nuevo de la planificación no debe usar `activo` para decidir si una sesión cuenta.
+- **Migración/verificación:** no requiere migración de IndexedDB (la normalización ocurre en runtime al leer el plan y solo escribe si faltaba algo); `npm run build` correcto.
 
 ### 2026-09-15 — Adherencia a la planificación
 

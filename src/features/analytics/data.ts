@@ -130,6 +130,13 @@ function inicioSemanaLocal(fecha: Date): Date {
 
 /**
  * Compara la planificación semanal actual con los logs completados.
+ *
+ * Recorre SIEMPRE los siete días de la semana (lunes a domingo): una rutina
+ * planificada en sábado o domingo cuenta igual que la de diario. Un día está
+ * planificado cuando tiene `rutinaId`; el flag `activo` es heredado y su
+ * ausencia no debe ocultar la sesión (los planes antiguos no guardaban la
+ * clave de los días de fin de semana y su rutina desaparecía de la métrica).
+ *
  * Las sesiones futuras no se consideran omitidas, aunque sí forman parte
  * del total planificado de la semana.
  */
@@ -151,13 +158,13 @@ export function calcularAdherenciaPlanificacion(
   let entrenamientosCompletados = 0;
   let sesionesOmitidas = 0;
 
-  for (let index = 0; index < DIAS_PLANIFICACION.length; index++) {
+  for (const [index, diaSemana] of DIAS_PLANIFICACION.entries()) {
     const fecha = new Date(semanaInicio);
     fecha.setDate(fecha.getDate() + index);
-    const dia = planificacion?.dias[DIAS_PLANIFICACION[index]];
-    if (!dia?.activo || !dia.rutinaId) continue;
+    const config = planificacion?.dias[diaSemana];
+    if (!config?.rutinaId) continue;
 
-    const rutinaId = dia.rutinaId;
+    const rutinaId = config.rutinaId;
     const nombre = rutinasMap.get(rutinaId) ?? (rutinaId === "custom-libre" ? "ENTRENAMIENTO LIBRE" : "RUTINA DESCONOCIDA");
     const acumulado = porRutina.get(rutinaId) ?? { nombre, planificados: 0, completados: 0 };
     acumulado.planificados++;
