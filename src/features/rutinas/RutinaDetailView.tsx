@@ -3,6 +3,7 @@ import { Box, Button, IconButton, Typography } from "@mui/material";
 import { AppTextField } from "../../components/AppTextField";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import {
   DndContext,
   PointerSensor,
@@ -20,7 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../../core/db";
-import type { EjercicioEnRutina } from "../../core/db";
+import type { EjercicioEnRutina, Rutina, Serie } from "../../core/db";
 import { PageHeader } from "../../components/PageHeader";
 import {
   renombrarRutina,
@@ -48,6 +49,7 @@ export function RutinaDetailView({
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectOpen, setSelectOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Edit local del nombre/descripción. Hidratamos en render-phase pattern
   // (no useEffect setState) cuando rutina.id cambia — patrón oficial de React.
@@ -127,6 +129,17 @@ export function RutinaDetailView({
     );
   };
 
+  const handleCopy = async () => {
+    const markdown = formatRutinaMarkdown(rutina, ejercicios, catalogoLookup);
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -144,6 +157,15 @@ export function RutinaDetailView({
         <PageHeader sx={{ flexGrow: 1 }}>
           {nombreDraft || rutina.nombre}
         </PageHeader>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<ContentCopyIcon />}
+          onClick={() => void handleCopy()}
+          sx={{ borderRadius: 0, whiteSpace: "nowrap", touchAction: "manipulation" }}
+        >
+          {copied ? "COPIADA" : "COPIAR RUTINA"}
+        </Button>
       </Box>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -240,4 +262,47 @@ export function RutinaDetailView({
       />
     </Box>
   );
+}
+
+function formatRutinaMarkdown(
+  rutina: Rutina,
+  ejercicios: EjercicioEnRutina[],
+  catalogoLookup: Map<string, { nombre: string; tipo: string }>,
+): string {
+  const lineas = [rutina.nombre];
+  if (rutina.descripcion?.trim()) {
+    lineas.push("", rutina.descripcion.trim());
+  }
+
+  ejercicios.forEach((ejercicio, ejercicioIndex) => {
+    const catalogo = catalogoLookup.get(ejercicio.ejercicioId);
+    const nombre = catalogo?.nombre ?? ejercicio.ejercicioId;
+    const seriesFormateadas = ejercicio.series.map((serie) => formatSerie(serie, catalogo?.tipo));
+    const seriesSonIguales = seriesFormateadas.every((serie) => serie === seriesFormateadas[0]);
+    lineas.push("", `${ejercicioIndex + 1}. ${nombre}`);
+    if (ejercicio.notas?.trim()) lineas.push(`   Nota: ${ejercicio.notas.trim()}`);
+    if (seriesSonIguales && seriesFormateadas[0]) {
+      lineas.push(`   ${ejercicio.series.length} series · ${seriesFormateadas[0]}`);
+    } else {
+      seriesFormateadas.forEach((serie, serieIndex) => {
+        lineas.push(`   - Serie ${serieIndex + 1}: ${serie}`);
+      });
+    }
+  });
+
+  return `${lineas.join("\n")}\n`;
+}
+
+function formatSerie(serie: Serie, tipo?: string): string {
+  const partes: string[] = [];
+  if (serie.repsMin != null || serie.repsMax != null) {
+    const min = serie.repsMin ?? serie.repsMax;
+    const max = serie.repsMax ?? serie.repsMin;
+    partes.push(`${min === max ? min : `${min}-${max}`} reps`);
+  }
+  if (serie.pesoObjetivo != null) partes.push(`${serie.pesoObjetivo} kg`);
+  if (serie.rpeObjetivo != null) partes.push(`RPE ${serie.rpeObjetivo}`);
+  if (serie.duracionObjetivoMinutos != null) partes.push(`${serie.duracionObjetivoMinutos} min`);
+  if (serie.distanciaObjetivoKm != null) partes.push(`${serie.distanciaObjetivoKm} km`);
+  return partes.length > 0 ? partes.join(" · ") : tipo ? tipo.toUpperCase() : "SIN OBJETIVO";
 }

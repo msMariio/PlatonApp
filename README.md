@@ -34,6 +34,7 @@ La aplicación está pensada para uso personal, móvil y como PWA instalable. No
 - Muestra rutinas archivadas en una vista separada, permite consultar su configuración, restaurarlas o eliminarlas definitivamente sin borrar sus entrenamientos históricos.
 - Mueve rutinas entre raíz y carpetas y colapsa carpetas.
 - Edita nombre, descripción, ejercicios, series y orden.
+- Copia una rutina desde su detalle al portapapeles en texto plano legible para compartirla.
 - Crea, busca, edita, archiva y desarchiva ejercicios maestros.
 - Tipos: `fuerza`, `cardio`, `tiempo`, `calistenia`.
 - Grupos musculares: `pecho`, `espalda`, `cuadriceps`, `isquios`, `hombro`, `biceps`, `triceps`, `core`, `gluteo`.
@@ -651,6 +652,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-17 — Copia de rutinas al portapapeles
+
+- **Cambio:** el detalle de cada rutina incorpora `COPIAR RUTINA`, que genera texto plano con saltos de línea reales, nombre, descripción, ejercicios, series y objetivos; agrupa las series idénticas para que se lea bien en WhatsApp y chats.
+- **Motivación:** facilitar compartir rutinas con otras personas o reutilizarlas fuera de la aplicación sin exponer IDs ni datos técnicos.
+- **Áreas afectadas:** `src/features/rutinas/RutinaDetailView.tsx` y este README.
+- **Contrato nuevo:** el texto copiado es una representación de presentación con saltos de línea reales; no incluye IDs internos, carpetas, historial ni datos personales.
+- **Migración/verificación:** no requiere migración de IndexedDB; `npm run build` correcto.
 
 ### 2026-09-17 — Rutinas archivadas separadas del Coach IA
 
