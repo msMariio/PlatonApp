@@ -220,7 +220,7 @@ Archivos clave:
 - `src/features/coach-ia/services/toolExecutor.ts`: escrituras reales.
 - `src/features/coach-ia/components/ToolProposalCard.tsx`: UI de propuesta.
 - `src/features/analytics/GrupoMuscularAnalyticsView.tsx`: panel semanal agregado por músculo.
-- `src/features/analytics/data.ts`: cálculo de semanas, volumen, series, frecuencia, adherencia y alertas musculares.
+- `src/features/analytics/data.ts`: cálculo de semanas, volumen, series, frecuencia, adherencia, alertas musculares y sincronización de snapshots semanales.
 
 ## Datos y persistencia
 
@@ -287,6 +287,7 @@ interface SerieReal {
 - `logsEntrenamientos`: historial con índice compuesto `[rutinaId+fecha]`.
 - `pesos`: `{ id?, fecha, hora, valor }`.
 - `planificacionSemanal`: singleton `default`, rutina o descanso por día.
+- `adherenciaSemanalSnapshots`: snapshots semanales congelados de la adherencia, identificados por la fecha de inicio de semana.
 - `perfil_usuario`: singleton `id: 1`, biometría, objetivo, API key y nombre del coach.
 - `sesiones_chat`: título, timestamps y mensajes.
 
@@ -325,6 +326,7 @@ interface MensajeChat {
 - v9: archivado de rutinas.
 - v10: `repsObjetivo` → `repsMin`/`repsMax`.
 - v11: grupos anatómicos nuevos; valores antiguos (`pierna`, `brazos`, `cardio`, `fullbody`) pasan a sin clasificar para reclasificación manual.
+- v12: snapshots semanales persistidos de adherencia.
 
 **Regla:** cualquier cambio persistido requiere nueva versión y migración; no se deben reescribir silenciosamente versiones publicadas. Actualizar también `backup.ts` y este README.
 
@@ -404,6 +406,8 @@ CATALOGO_EJERCICIOS
 CATALOGO_CARPETAS
 CATALOGO_RUTINAS
 PLANIFICACION_SEMANAL
+ADHERENCIA_SEMANAL
+METRICAS_MUSCULARES
 ENTRENAMIENTOS_ULTIMOS_28_DIAS
 ```
 
@@ -413,7 +417,11 @@ ENTRENAMIENTOS_ULTIMOS_28_DIAS
 - `METRICAS_FUERZA`: métricas de banca, sentadilla, peso muerto y press militar si existen.
 - `CATALOGO_*`: IDs, nombres, tipos, carpetas, rutinas y objetivos por serie.
 - `PLANIFICACION_SEMANAL`: día → nombre de rutina o `null`.
+- `ADHERENCIA_SEMANAL`: semana activa, ratio y porcentaje de cumplimiento, sesiones planificadas/completadas/omitidas/pendientes, racha de días, `cumplimientoPorRutina` con IDs/contadores/porcentaje e `historial` de snapshots persistidos. La semana activa se calcula con `calcularAdherenciaPlanificacion()` y se sincroniza mediante `sincronizarSnapshotAdherenciaActual()`.
+- `METRICAS_MUSCULARES`: semana activa, `frecuenciaPromedioGruposActivos`, y cada grupo anatómico con frecuencia, series efectivas, volumen, clasificación (`INACTIVO`, `BAJO`, `MEDIO`, `OPTIMO`, `ALTO`) y `deltaSeriesVsSemanaAnterior`; `alertas` contiene grupos olvidados o con posible sobrecarga y también se informa de ejercicios sin clasificar. Se calcula con `calcularAnaliticaGrupoMuscular()`, `clasificarSeriesMusculares()` y `calcularFrecuenciaPromedioMuscular()`.
 - `ENTRENAMIENTOS_ULTIMOS_28_DIAS`: logs reales de 28 días.
+
+Los bloques `ADHERENCIA_SEMANAL` y `METRICAS_MUSCULARES` son resúmenes autoritativos de `features/analytics`; el agente debe usarlos antes que intentar recomputar métricas a partir de una ventana parcial de logs.
 
 `SNAPSHOT_GENERADO` es una marca técnica, no una referencia de “hoy”.
 
@@ -519,7 +527,7 @@ La hora de `registrar_peso` también usa el valor recibido o la hora local si se
 
 ## Backups y configuración
 
-`src/core/backup.ts` exporta las ocho tablas:
+`src/core/backup.ts` exporta las nueve tablas:
 
 ```json
 {
@@ -533,6 +541,7 @@ La hora de `registrar_peso` también usa el valor recibido o la hora local si se
     "logsEntrenamientos": [],
     "pesos": [],
     "planificacionSemanal": [],
+    "adherenciaSemanalSnapshots": [],
     "perfil_usuario": [],
     "sesiones_chat": []
   }
@@ -641,6 +650,22 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-17 — Historial persistido de adherencia semanal
+
+- **Cambio:** se añadió `adherenciaSemanalSnapshots`, que guarda la planificación y el resultado de cada semana mientras está activa; al comenzar una semana nueva, las anteriores quedan congeladas. El snapshot actual se sincroniza desde la pantalla de analítica y al construir el contexto del Coach IA.
+- **Motivación:** conservar la adherencia histórica aunque la planificación actual cambie posteriormente.
+- **Áreas afectadas:** `src/core/db.ts`, `src/core/backup.ts`, `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx`, `src/features/coach-ia/services/geminiService.ts` y este README.
+- **Contrato nuevo:** `AdherenciaSemanalSnapshot` usa como ID `semanaInicio` y conserva fechas, planificación, contadores, porcentaje, sesiones omitidas/pendientes, racha y desglose por rutina. Solo se actualiza la semana abierta; no se recalculan semanas cerradas con la planificación vigente. El Coach recibe además el resumen `historial` de snapshots disponibles.
+- **Migración/verificación:** migración Dexie v12; los backups antiguos siguen siendo importables y reciben una colección de snapshots vacía.
+
+### 2026-09-17 — Analítica de adherencia y músculos en el snapshot IA
+
+- **Cambio:** `LOCAL_SNAPSHOT` incorpora `ADHERENCIA_SEMANAL` y `METRICAS_MUSCULARES` con los resúmenes de la semana activa, incluyendo cumplimiento por rutina, pendientes, racha, series efectivas, frecuencia, clasificación, delta semanal y alertas.
+- **Motivación:** permitir que el Coach IA analice los mismos indicadores que muestra la pantalla de métricas, sin duplicar ni aproximar cálculos desde logs parciales.
+- **Áreas afectadas:** `src/features/coach-ia/services/geminiService.ts`, `src/features/analytics/data.ts`, `src/features/analytics/GrupoMuscularAnalyticsView.tsx`, `src/core/ia-prompts.ts` y este README.
+- **Contrato nuevo:** `ADHERENCIA_SEMANAL` usa `calcularAdherenciaPlanificacion()` y expone `ratioCumplimiento`, `porcentajeCumplimiento`, sesiones planificadas/completadas/omitidas/pendientes, `rachaDiasCumplimiento` y `cumplimientoPorRutina`. `METRICAS_MUSCULARES` usa las funciones centrales de analítica y expone grupos, `frecuenciaPromedioGruposActivos`, `alertas` y `ejerciciosSinClasificar`.
+- **Migración/verificación:** no requiere migración de IndexedDB; ejecutar `npm run build` y `npm run lint`.
 
 ### 2026-09-16 — Sustituciones vinculadas a instancias de rutina
 

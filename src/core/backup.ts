@@ -6,6 +6,7 @@ import type {
   LogEntrenamiento,
   PesoDiario,
   PlanificacionSemanal,
+  AdherenciaSemanalSnapshot,
   PerfilUsuario,
   SesionChat,
 } from "./db";
@@ -24,6 +25,7 @@ export interface BackupData {
     logsEntrenamientos: LogEntrenamiento[];
     pesos: PesoDiario[];
     planificacionSemanal: PlanificacionSemanal[];
+    adherenciaSemanalSnapshots: AdherenciaSemanalSnapshot[];
     perfil_usuario: PerfilUsuario[];
     sesiones_chat: SesionChat[];
   };
@@ -41,6 +43,7 @@ export async function exportBackup(): Promise<void> {
     logsEntrenamientos,
     pesos,
     planificacionSemanal,
+    adherenciaSemanalSnapshots,
     perfil_usuario,
     sesiones_chat,
   ] = await Promise.all([
@@ -50,6 +53,7 @@ export async function exportBackup(): Promise<void> {
     db.logsEntrenamientos.toArray(),
     db.pesos.toArray(),
     db.planificacionSemanal.toArray(),
+    db.adherenciaSemanalSnapshots.toArray(),
     db.perfil_usuario.toArray(),
     db.sesiones_chat.toArray(),
   ]);
@@ -65,6 +69,7 @@ export async function exportBackup(): Promise<void> {
       logsEntrenamientos,
       pesos,
       planificacionSemanal,
+      adherenciaSemanalSnapshots,
       perfil_usuario,
       sesiones_chat,
     },
@@ -150,6 +155,7 @@ async function performImport(backup: BackupData): Promise<void> {
       db.logsEntrenamientos,
       db.pesos,
       db.planificacionSemanal,
+      db.adherenciaSemanalSnapshots,
       db.perfil_usuario,
       db.sesiones_chat,
     ],
@@ -158,6 +164,7 @@ async function performImport(backup: BackupData): Promise<void> {
       await db.sesiones_chat.clear();
       await db.perfil_usuario.clear();
       await db.planificacionSemanal.clear();
+      await db.adherenciaSemanalSnapshots.clear();
       await db.logsEntrenamientos.clear();
       await db.pesos.clear();
       await db.rutinas.clear();
@@ -182,6 +189,9 @@ async function performImport(backup: BackupData): Promise<void> {
       }
       if (backup.data.planificacionSemanal.length > 0) {
         await db.planificacionSemanal.bulkAdd(backup.data.planificacionSemanal);
+      }
+      if (backup.data.adherenciaSemanalSnapshots?.length > 0) {
+        await db.adherenciaSemanalSnapshots.bulkAdd(backup.data.adherenciaSemanalSnapshots);
       }
       if (backup.data.perfil_usuario.length > 0) {
         await db.perfil_usuario.bulkAdd(backup.data.perfil_usuario);

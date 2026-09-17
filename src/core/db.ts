@@ -108,6 +108,28 @@ export interface PlanificacionSemanal {
   >;
 }
 
+export interface AdherenciaSemanalSnapshot {
+  id: string;
+  semanaInicio: string;
+  semanaFin: string;
+  planificacion: Record<DiaSemana, { rutinaId: string | null; activo: boolean }> | null;
+  entrenamientosPlanificados: number;
+  entrenamientosCompletados: number;
+  porcentajeCumplimiento: number;
+  sesionesOmitidas: number;
+  sesionesPendientes: number;
+  diasConsecutivos: number;
+  rutinas: Array<{
+    rutinaId: string;
+    nombre: string;
+    planificados: number;
+    completados: number;
+    porcentaje: number;
+  }>;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
 export interface PesoDiario {
   id?: number;
   fecha: string;
@@ -174,6 +196,7 @@ class GymDatabase extends Dexie {
   logsEntrenamientos!: Table<LogEntrenamiento>;
   pesos!: Table<PesoDiario>;
   planificacionSemanal!: Table<PlanificacionSemanal>;
+  adherenciaSemanalSnapshots!: Table<AdherenciaSemanalSnapshot>;
   perfil_usuario!: Table<PerfilUsuario>;
   sesiones_chat!: Table<SesionChat>;
 
@@ -413,6 +436,23 @@ class GymDatabase extends Dexie {
         if (actualizados.length > 0) {
           await tx.table<Ejercicio>("ejercicios").bulkPut(actualizados);
         }
+      });
+
+    // v12: snapshots semanales persistidos de adherencia
+    this.version(12)
+      .stores({
+        ejercicios: "id, grupoMuscular",
+        carpetas: "id, order",
+        rutinas: "id, carpetaId, order",
+        logsEntrenamientos: "++id, fecha, rutinaId, [rutinaId+fecha]",
+        pesos: "++id, fecha",
+        planificacionSemanal: "id",
+        adherenciaSemanalSnapshots: "id, semanaInicio",
+        perfil_usuario: "id",
+        sesiones_chat: "++id, fechaCreacion, fechaActualizacion",
+      })
+      .upgrade(async () => {
+        // Nueva tabla; los snapshots empiezan a capturarse desde la actualización.
       });
   }
 }

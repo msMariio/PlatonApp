@@ -1,6 +1,12 @@
 import { db, type MensajeChat, type SesionChat, type LogEntrenamiento, type PesoDiario, type Ejercicio } from "../../../core/db";
 import { SYSTEM_PROMPT_PERFORMANCE_OS } from "../../../core/ia-prompts";
 import { calcularE1RM } from "../../../core/utils/calculators";
+import {
+  calcularAnaliticaGrupoMuscular,
+  sincronizarSnapshotAdherenciaActual,
+  calcularFrecuenciaPromedioMuscular,
+  clasificarSeriesMusculares,
+} from "../../analytics/data";
 import { TOOL_DECLARATIONS, type FunctionDeclaration } from "./toolDefinitions";
 
 const GEMINI_API_BASE =
@@ -467,10 +473,41 @@ async function buildLocalSnapshot(
 
   // Planificación semanal
   const planificacion = await db.planificacionSemanal.get("default");
+  const adherencia = await sincronizarSnapshotAdherenciaActual(planificacion, logsTodos, rutinas, hoy);
+  const historialAdherencia = await db.adherenciaSemanalSnapshots
+    .orderBy("semanaInicio")
+    .toArray();
+  const analiticaMuscular = calcularAnaliticaGrupoMuscular(logsTodos, ejercicios, hoy);
+  const semanaMuscularActual = analiticaMuscular.actual;
+  const semanaMuscularAnterior = analiticaMuscular.semanas[analiticaMuscular.semanas.length - 2].grupos;
+  const metricasMusculares = semanaMuscularActual.map((grupo) => {
+    const anterior = semanaMuscularAnterior.find((item) => item.grupo === grupo.grupo)!;
+    const clasificacion = clasificarSeriesMusculares(grupo.seriesEfectivas);
+    return {
+      grupo: grupo.grupo,
+      frecuencia: grupo.frecuencia,
+      seriesEfectivas: grupo.seriesEfectivas,
+      volumenKg: +grupo.volumen.toFixed(1),
+      clasificacion: clasificacion.estado,
+      deltaSeriesVsSemanaAnterior: grupo.seriesEfectivas - anterior.seriesEfectivas,
+    };
+  });
+  const alertasMusculares = [
+    ...analiticaMuscular.abandonados.map((grupo) => ({
+      tipo: "GRUPO_OLVIDADO",
+      grupo,
+      mensaje: "Sin series efectivas esta semana tras haberlas realizado la semana anterior",
+    })),
+    ...analiticaMuscular.sobrecargados.map((grupo) => ({
+      tipo: "POSIBLE_SOBRECARGA",
+      grupo,
+      mensaje: "Aumento de al menos 50% en series o volumen frente a la semana anterior",
+    })),
+  ];
   const planSemanal: Record<string, string | null> = {};
   if (planificacion) {
     for (const [dia, config] of Object.entries(planificacion.dias)) {
-      if (!config.activo || !config.rutinaId) {
+      if (!config?.rutinaId) {
         planSemanal[dia] = null;
       } else {
         planSemanal[dia] =
@@ -552,6 +589,43 @@ async function buildLocalSnapshot(
     })),
     PLANIFICACION_SEMANAL:
       planificacion != null ? planSemanal : "NO_CONFIGURADA",
+    ADHERENCIA_SEMANAL: {
+      semanaInicio: adherencia.semanaInicio,
+      semanaFin: adherencia.semanaFin,
+      ratioCumplimiento: adherencia.entrenamientosPlanificados > 0
+        ? +(adherencia.entrenamientosCompletados / adherencia.entrenamientosPlanificados).toFixed(3)
+        : 0,
+      porcentajeCumplimiento: +adherencia.porcentajeCumplimiento.toFixed(1),
+      sesionesPlanificadas: adherencia.entrenamientosPlanificados,
+      sesionesCompletadas: adherencia.entrenamientosCompletados,
+      sesionesOmitidas: adherencia.sesionesOmitidas,
+      sesionesPendientes: adherencia.sesionesPendientes,
+      rachaDiasCumplimiento: adherencia.diasConsecutivos,
+      cumplimientoPorRutina: adherencia.rutinas.map((rutina) => ({
+        rutinaId: rutina.rutinaId,
+        rutina: rutina.nombre,
+        planificadas: rutina.planificados,
+        completadas: rutina.completados,
+        porcentaje: +rutina.porcentaje.toFixed(1),
+      })),
+      historial: historialAdherencia.map((semana) => ({
+        semanaInicio: semana.semanaInicio,
+        semanaFin: semana.semanaFin,
+        sesionesPlanificadas: semana.entrenamientosPlanificados,
+        sesionesCompletadas: semana.entrenamientosCompletados,
+        porcentajeCumplimiento: +semana.porcentajeCumplimiento.toFixed(1),
+        sesionesOmitidas: semana.sesionesOmitidas,
+        sesionesPendientes: semana.sesionesPendientes,
+      })),
+    },
+    METRICAS_MUSCULARES: {
+      semanaInicio: analiticaMuscular.semanas.at(-1)!.inicio.toISOString().slice(0, 10),
+      semanaFin: analiticaMuscular.semanas.at(-1)!.fin.toISOString().slice(0, 10),
+      frecuenciaPromedioGruposActivos: +calcularFrecuenciaPromedioMuscular(semanaMuscularActual).toFixed(2),
+      grupos: metricasMusculares,
+      alertas: alertasMusculares,
+      ejerciciosSinClasificar: analiticaMuscular.ejerciciosSinClasificar,
+    },
     ENTRENAMIENTOS_ULTIMOS_28_DIAS: logsRecientes.map((log) => ({
       fecha: log.fecha,
       rutina: log.rutinaSnapshot ?? log.rutinaId,

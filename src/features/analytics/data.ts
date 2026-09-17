@@ -1,5 +1,6 @@
 import {
   db,
+  type AdherenciaSemanalSnapshot,
   type DiaSemana,
   type LogEntrenamiento,
   type PlanificacionSemanal,
@@ -102,6 +103,7 @@ export interface AdherenciaPlanificacion {
   entrenamientosCompletados: number;
   porcentajeCumplimiento: number;
   sesionesOmitidas: number;
+  sesionesPendientes: number;
   diasConsecutivos: number;
   rutinas: AdherenciaRutina[];
 }
@@ -157,6 +159,7 @@ export function calcularAdherenciaPlanificacion(
   let entrenamientosPlanificados = 0;
   let entrenamientosCompletados = 0;
   let sesionesOmitidas = 0;
+  let sesionesPendientes = 0;
 
   for (const [index, diaSemana] of DIAS_PLANIFICACION.entries()) {
     const fecha = new Date(semanaInicio);
@@ -179,6 +182,8 @@ export function calcularAdherenciaPlanificacion(
       entrenamientosCompletados++;
     } else if (fechaISO <= hoyISO) {
       sesionesOmitidas++;
+    } else {
+      sesionesPendientes++;
     }
     porRutina.set(rutinaId, acumulado);
   }
@@ -210,9 +215,54 @@ export function calcularAdherenciaPlanificacion(
       ? (entrenamientosCompletados / entrenamientosPlanificados) * 100
       : 0,
     sesionesOmitidas,
+    sesionesPendientes,
     diasConsecutivos,
     rutinas: rutinasAdherencia,
   };
+}
+
+export async function sincronizarSnapshotAdherenciaActual(
+  planificacion: PlanificacionSemanal | undefined,
+  logs: LogEntrenamiento[],
+  rutinas: Rutina[],
+  ahora = new Date(),
+): Promise<AdherenciaSemanalSnapshot> {
+  const adherencia = calcularAdherenciaPlanificacion(planificacion, logs, rutinas, ahora);
+  const semanaInicio = fechaLocalISO(adherencia.semanaInicio);
+  const semanaFin = fechaLocalISO(adherencia.semanaFin);
+  const id = semanaInicio;
+  const existente = await db.adherenciaSemanalSnapshots.get(id);
+  const ahoraISO = new Date().toISOString();
+  const snapshot: AdherenciaSemanalSnapshot = {
+    id,
+    semanaInicio,
+    semanaFin,
+    planificacion: planificacion
+      ? {
+          lunes: { ...planificacion.dias.lunes },
+          martes: { ...planificacion.dias.martes },
+          miercoles: { ...planificacion.dias.miercoles },
+          jueves: { ...planificacion.dias.jueves },
+          viernes: { ...planificacion.dias.viernes },
+          sabado: { ...planificacion.dias.sabado },
+          domingo: { ...planificacion.dias.domingo },
+        }
+      : null,
+    entrenamientosPlanificados: adherencia.entrenamientosPlanificados,
+    entrenamientosCompletados: adherencia.entrenamientosCompletados,
+    porcentajeCumplimiento: adherencia.porcentajeCumplimiento,
+    sesionesOmitidas: adherencia.sesionesOmitidas,
+    sesionesPendientes: adherencia.sesionesPendientes,
+    diasConsecutivos: adherencia.diasConsecutivos,
+    rutinas: adherencia.rutinas,
+    creadoEn: existente?.creadoEn ?? ahoraISO,
+    actualizadoEn: ahoraISO,
+  };
+
+  // Solo se escribe la semana activa. Al cambiar de semana, los registros
+  // anteriores quedan congelados y no se recalculan con una planificación nueva.
+  await db.adherenciaSemanalSnapshots.put(snapshot);
+  return snapshot;
 }
 
 export interface AnaliticaGrupoMuscular {
@@ -245,6 +295,14 @@ function crearMetricasVacias(): Map<GrupoMuscularAnalitica, { volumen: number; s
  * muscular nuevo contribuyen; cardio/fullbody y legacy sin reclasificar quedan
  * fuera del análisis y se contabilizan en `ejerciciosSinClasificar`.
  */
+export function calcularFrecuenciaPromedioMuscular(
+  metricas: MetricaGrupoMuscular[],
+): number {
+  const gruposActivos = metricas.filter((grupo) => grupo.seriesEfectivas > 0);
+  if (gruposActivos.length === 0) return 0;
+  return gruposActivos.reduce((total, grupo) => total + grupo.frecuencia, 0) / gruposActivos.length;
+}
+
 export function calcularAnaliticaGrupoMuscular(
   logs: LogEntrenamiento[],
   ejercicios: Array<{ id: string; grupoMuscular?: string }>,

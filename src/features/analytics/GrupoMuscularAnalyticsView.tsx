@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Box, Button, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import AccessibilityNewIcon from "@mui/icons-material/AccessibilityNew";
@@ -12,7 +12,9 @@ import { PageHeader } from "../../components/PageHeader";
 import {
   calcularAdherenciaPlanificacion,
   calcularAnaliticaGrupoMuscular,
+  calcularFrecuenciaPromedioMuscular,
   clasificarSeriesMusculares,
+  sincronizarSnapshotAdherenciaActual,
   type EstadoSeriesMusculares,
   type GrupoMuscularAnalitica,
 } from "./data";
@@ -64,15 +66,14 @@ export function GrupoMuscularAnalyticsView() {
     () => calcularAdherenciaPlanificacion(planificacionQuery, logs, rutinas),
     [planificacionQuery, logs, rutinas],
   );
+  useEffect(() => {
+    void sincronizarSnapshotAdherenciaActual(planificacionQuery, logs, rutinas);
+  }, [planificacionQuery, logs, rutinas]);
   const semanaActual = analitica.actual;
   const semanaAnterior = analitica.semanas[analitica.semanas.length - 2].grupos;
   const volumenSemanal = semanaActual.reduce((total, grupo) => total + grupo.volumen, 0);
   const seriesSemanales = semanaActual.reduce((total, grupo) => total + grupo.seriesEfectivas, 0);
-  const sumaDiasTotales = semanaActual.reduce((total, grupo) => total + grupo.frecuencia, 0);
-  const gruposActivos = semanaActual.filter((grupo) => grupo.seriesEfectivas > 0);
-  const frecuenciaPromedio = gruposActivos.length > 0
-    ? sumaDiasTotales / gruposActivos.length
-    : 0;
+  const frecuenciaPromedio = calcularFrecuenciaPromedioMuscular(semanaActual);
   const datosGrafico = analitica.semanas.map((semana) =>
     semana.grupos.reduce(
       (total, grupo) => total + (metricaGrafico === "series" ? grupo.seriesEfectivas : grupo.volumen),
