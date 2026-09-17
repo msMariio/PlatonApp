@@ -121,6 +121,15 @@ export async function desarchivarRutina(id: string): Promise<void> {
   await db.rutinas.update(id, { isArchived: false });
 }
 
+/** Elimina físicamente una rutina ya archivada sin tocar sus logs históricos. */
+export async function eliminarRutinaDefinitivamente(id: string): Promise<void> {
+  const rutina = await db.rutinas.get(id);
+  if (!rutina?.isArchived) {
+    throw new Error("Solo se pueden eliminar definitivamente rutinas archivadas.");
+  }
+  await db.rutinas.delete(id);
+}
+
 export async function renombrarRutina(
   id: string,
   nombre: string

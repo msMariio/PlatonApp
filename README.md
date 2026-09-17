@@ -31,6 +31,7 @@ La aplicación está pensada para uso personal, móvil y como PWA instalable. No
 
 - Crea carpetas planas y rutinas.
 - Reordena carpetas y rutinas con drag-and-drop, táctil o teclado.
+- Muestra rutinas archivadas en una vista separada, permite consultar su configuración, restaurarlas o eliminarlas definitivamente sin borrar sus entrenamientos históricos.
 - Mueve rutinas entre raíz y carpetas y colapsa carpetas.
 - Edita nombre, descripción, ejercicios, series y orden.
 - Crea, busca, edita, archiva y desarchiva ejercicios maestros.
@@ -415,7 +416,7 @@ ENTRENAMIENTOS_ULTIMOS_28_DIAS
 - `PERFIL`: nombre, altura, edad, sexo y objetivo.
 - `HISTORIAL_PESO`: todos los pesajes, último valor, total, EMA-7, tasa, método y tendencia.
 - `METRICAS_FUERZA`: métricas de banca, sentadilla, peso muerto y press militar si existen.
-- `CATALOGO_*`: IDs, nombres, tipos, carpetas, rutinas y objetivos por serie.
+- `CATALOGO_*`: IDs, nombres, tipos, carpetas, rutinas activas y objetivos por serie. Las rutinas archivadas no se envían como catálogo operativo; los logs conservan sus nombres mediante `rutinaSnapshot`.
 - `PLANIFICACION_SEMANAL`: día → nombre de rutina o `null`.
 - `ADHERENCIA_SEMANAL`: semana activa, ratio y porcentaje de cumplimiento, sesiones planificadas/completadas/omitidas/pendientes, racha de días, `cumplimientoPorRutina` con IDs/contadores/porcentaje e `historial` de snapshots persistidos. La semana activa se calcula con `calcularAdherenciaPlanificacion()` y se sincroniza mediante `sincronizarSnapshotAdherenciaActual()`.
 - `METRICAS_MUSCULARES`: semana activa, `frecuenciaPromedioGruposActivos`, y cada grupo anatómico con frecuencia, series efectivas, volumen, clasificación (`INACTIVO`, `BAJO`, `MEDIO`, `OPTIMO`, `ALTO`) y `deltaSeriesVsSemanaAnterior`; `alertas` contiene grupos olvidados o con posible sobrecarga y también se informa de ejercicios sin clasificar. Se calcula con `calcularAnaliticaGrupoMuscular()`, `clasificarSeriesMusculares()` y `calcularFrecuenciaPromedioMuscular()`.
@@ -650,6 +651,14 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 12. El prompt orienta al modelo, pero `toolExecutor.ts` es la autoridad final de escrituras y validaciones.
 
 ## Registro de cambios
+
+### 2026-09-17 — Rutinas archivadas separadas del Coach IA
+
+- **Cambio:** la pantalla de rutinas incorpora el filtro `ARCHIVADAS`, con consulta de ejercicios/configuración, restauración y eliminación definitiva. El `LOCAL_SNAPSHOT` solo incluye rutinas activas y las tools del Coach rechazan IDs o nombres de rutinas archivadas.
+- **Motivación:** evitar que el agente opere sobre plantillas retiradas y conservar, al mismo tiempo, el historial de entrenamientos que las referencia.
+- **Áreas afectadas:** `src/features/rutinas/RutinasView.tsx`, `src/features/rutinas/data.ts`, `src/features/coach-ia/services/geminiService.ts`, `src/features/coach-ia/services/toolExecutor.ts`, `src/core/ia-prompts.ts` y este README.
+- **Contrato nuevo:** `CATALOGO_RUTINAS` contiene solo rutinas activas; la planificación no expone rutinas archivadas como asignables; una rutina archivada debe restaurarse desde la UI antes de editarla o usarla con el Coach. La eliminación definitiva solo afecta a la plantilla, no a los logs históricos.
+- **Migración/verificación:** no requiere migración de IndexedDB; ejecutar `npm run build` y `npm run lint`.
 
 ### 2026-09-17 — Historial persistido de adherencia semanal
 

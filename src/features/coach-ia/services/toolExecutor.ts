@@ -82,7 +82,8 @@ async function requireEjercicioId(
 }
 
 /**
- * Busca una rutina por ID o por nombre y devuelve solo el ID.
+ * Busca una rutina activa por ID o por nombre y devuelve solo el ID.
+ * Las rutinas archivadas quedan fuera de todas las operaciones del Coach.
  */
 async function resolveRutina(
   rutinaId: string | null | undefined,
@@ -90,7 +91,7 @@ async function resolveRutina(
 ): Promise<string | null> {
   if (rutinaId) {
     const existe = await db.rutinas.get(rutinaId);
-    if (existe) return rutinaId;
+    if (existe && !existe.isArchived) return rutinaId;
   }
   if (rutinaNombre) {
     const porNombre = await db.rutinas

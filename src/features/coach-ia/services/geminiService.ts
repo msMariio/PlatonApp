@@ -442,6 +442,7 @@ async function buildLocalSnapshot(
 
   // ── Métricas de fuerza (main lifts) ───────────────────────────────
   const ejercicios = await db.ejercicios.toArray();
+  const ejerciciosActivos = ejercicios.filter((ejercicio) => !ejercicio.isArchived);
   const logsTodos = await db.logsEntrenamientos.toArray();
   const metricasFuerza = await calcularMetricasFuerza(ejercicios, logsTodos, pesosOrdenados);
 
@@ -468,7 +469,8 @@ async function buildLocalSnapshot(
   // Catálogos completos para que la IA los conozca
   const ejercicioMap = new Map(ejercicios.map((e) => [e.id, e]));
   const rutinas = await db.rutinas.toArray();
-  const rutinaMap = new Map(rutinas.map((r) => [r.id, r]));
+  const rutinasActivas = rutinas.filter((rutina) => !rutina.isArchived);
+  const rutinaMap = new Map(rutinasActivas.map((r) => [r.id, r]));
   const carpetas = await db.carpetas.toArray();
 
   // Planificación semanal
@@ -510,8 +512,7 @@ async function buildLocalSnapshot(
       if (!config?.rutinaId) {
         planSemanal[dia] = null;
       } else {
-        planSemanal[dia] =
-          rutinaMap.get(config.rutinaId)?.nombre ?? config.rutinaId;
+        planSemanal[dia] = rutinaMap.get(config.rutinaId)?.nombre ?? null;
       }
     }
   }
@@ -554,7 +555,7 @@ async function buildLocalSnapshot(
           peso_corporal_kg: m.ultimoPesoKg,
         }))
       : "SIN_DATOS",
-    CATALOGO_EJERCICIOS: ejercicios.map((e) => ({
+    CATALOGO_EJERCICIOS: ejerciciosActivos.map((e) => ({
       id: e.id,
       nombre: e.nombre,
       grupoMuscular: e.grupoMuscular,
@@ -565,7 +566,7 @@ async function buildLocalSnapshot(
       id: c.id,
       nombre: c.nombre,
     })),
-    CATALOGO_RUTINAS: rutinas.map((r) => ({
+    CATALOGO_RUTINAS: rutinasActivas.map((r) => ({
       id: r.id,
       nombre: r.nombre,
       descripcion: r.descripcion ?? "",

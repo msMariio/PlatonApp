@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Box, Button } from "@mui/material";
+import { Box, Button, IconButton, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import DeleteIcon from "@mui/icons-material/Delete";
+import UndoIcon from "@mui/icons-material/Undo";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import {
   DndContext,
@@ -30,6 +32,8 @@ import {
   crearRutina,
   eliminarCarpeta,
   eliminarRutina,
+  eliminarRutinaDefinitivamente,
+  desarchivarRutina,
   persistCarpetasOrder,
   persistRutinasMap,
   toggleCarpetaCollapsed,
@@ -136,6 +140,7 @@ function RutinasListBody({
   onOpenEjercicios,
 }: ListBodyProps) {
   const carpetas = useLiveQuery(() => db.carpetas.toArray(), []) ?? [];
+  const ejerciciosCatalogo = useLiveQuery(() => db.ejercicios.toArray(), []) ?? [];
   const todasLasRutinas = useLiveQuery(() => db.rutinas.toArray(), []) ?? [];
   // Excluir rutinas archivadas de la vista normal
   const rutinas = todasLasRutinas.filter((r) => !r.isArchived);
@@ -167,6 +172,8 @@ function RutinasListBody({
   const [nuevaCarpetaOpen, setNuevaCarpetaOpen] = useState(false);
   const [nuevaRutinaTarget, setNuevaRutinaTarget] =
     useState<ContainerId | null>(null);
+  const [vista, setVista] = useState<"activos" | "archivados">("activos");
+  const archivadas = todasLasRutinas.filter((r) => r.isArchived);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -364,6 +371,22 @@ function RutinasListBody({
         >
           EJERCICIOS
         </Button>
+        {archivadas.length > 0 && (
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={vista}
+            onChange={(_, valor) => valor && setVista(valor as "activos" | "archivados")}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
+            <ToggleButton value="activos" sx={{ borderRadius: "0 !important" }}>
+              ACTIVAS ({rutinas.length})
+            </ToggleButton>
+            <ToggleButton value="archivados" sx={{ borderRadius: "0 !important" }}>
+              ARCHIVADAS ({archivadas.length})
+            </ToggleButton>
+          </ToggleButtonGroup>
+        )}
         <Button
           startIcon={<CreateNewFolderIcon />}
           variant="outlined"
@@ -385,6 +408,7 @@ function RutinasListBody({
         </Button>
       </Box>
 
+      {vista === "activos" ? (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -506,6 +530,19 @@ function RutinasListBody({
           ) : null}
         </DragOverlay>
       </DndContext>
+      ) : (
+        <ArchivedRutinasList
+          rutinas={archivadas}
+          ejercicios={ejerciciosCatalogo}
+          onRestore={async (id) => {
+            await desarchivarRutina(id);
+            setVista("activos");
+          }}
+          onDelete={async (id) => {
+            await eliminarRutinaDefinitivamente(id);
+          }}
+        />
+      )}
 
       <NuevaCarpetaDialog
         open={nuevaCarpetaOpen}
@@ -527,6 +564,104 @@ function RutinasListBody({
           setNuevaRutinaTarget(null);
         }}
       />
+    </Box>
+  );
+}
+
+function ArchivedRutinasList({
+  rutinas,
+  ejercicios,
+  onRestore,
+  onDelete,
+}: {
+  rutinas: Rutina[];
+  ejercicios: Array<{ id: string; nombre: string }>;
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const nombres = new Map(ejercicios.map((ejercicio) => [ejercicio.id, ejercicio.nombre]));
+  const ordenadas = [...rutinas].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  if (ordenadas.length === 0) {
+    return <EmptyStateCard height={160}>[ NO HAY RUTINAS ARCHIVADAS ]</EmptyStateCard>;
+  }
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+      <Typography variant="caption" color="text.secondary">
+        LAS RUTINAS ARCHIVADAS SE CONSERVAN PARA NO ROMPER EL HISTORIAL DE ENTRENAMIENTOS.
+      </Typography>
+      {ordenadas.map((rutina) => (
+        <Box
+          key={rutina.id}
+          sx={{
+            border: 1,
+            borderColor: "text.disabled",
+            bgcolor: "action.disabledBackground",
+            opacity: 0.82,
+            p: 1.5,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Typography sx={{ fontWeight: "bold", textDecoration: "line-through" }}>
+                {rutina.nombre}
+              </Typography>
+              {rutina.descripcion && (
+                <Typography variant="caption" color="text.secondary">
+                  {rutina.descripcion}
+                </Typography>
+              )}
+            </Box>
+            <IconButton
+              size="small"
+              onClick={() => onRestore(rutina.id)}
+              aria-label={`Restaurar rutina ${rutina.nombre}`}
+              sx={{ borderRadius: 0, color: "primary.main" }}
+            >
+              <UndoIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => {
+                if (window.confirm(`¿Eliminar definitivamente la rutina "${rutina.nombre}"?\\n\\nSus entrenamientos históricos se conservarán, pero la rutina no podrá restaurarse.`)) {
+                  onDelete(rutina.id);
+                }
+              }}
+              aria-label={`Eliminar definitivamente rutina ${rutina.nombre}`}
+              sx={{ borderRadius: 0, color: "text.secondary", "&:hover": { color: "error.main" } }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          <Box sx={{ mt: 1, pl: 0.5 }}>
+            {rutina.ejercicios.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">[ SIN EJERCICIOS ]</Typography>
+            ) : (
+              rutina.ejercicios
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((ejercicio) => (
+                  <Box key={ejercicio.id} sx={{ mb: 0.75 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      · {nombres.get(ejercicio.ejercicioId) ?? ejercicio.ejercicioId} // {ejercicio.series.length} SERIES
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled" sx={{ display: "block", pl: 2 }}>
+                      {ejercicio.series.map((serie, indice) => {
+                        const reps = serie.repsMin != null || serie.repsMax != null
+                          ? `${serie.repsMin ?? "-"}-${serie.repsMax ?? "-"} REPS`
+                          : null;
+                        const peso = serie.pesoObjetivo != null ? `${serie.pesoObjetivo} KG` : null;
+                        const tiempo = serie.duracionObjetivoMinutos != null ? `${serie.duracionObjetivoMinutos} MIN` : null;
+                        return `S${indice + 1}: ${[reps, peso, tiempo].filter(Boolean).join(" // ") || "CONFIGURADA"}`;
+                      }).join(" · ")}
+                    </Typography>
+                  </Box>
+                ))
+            )}
+          </Box>
+        </Box>
+      ))}
     </Box>
   );
 }
