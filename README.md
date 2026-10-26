@@ -106,7 +106,7 @@ La misma función se utiliza en la pantalla de fuerza, la analítica por ejercic
 Endpoint configurado:
 
 ```text
-https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent
+https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
 ```
 
 ## Puesta en marcha
@@ -251,7 +251,7 @@ interface Serie {
 }
 
 interface EjercicioEnRutina {
-  id: string;          // instancia local; no es el id del catálogo
+  id: string; // instancia local; no es el id del catálogo
   ejercicioId: string; // id del ejercicio maestro
   series: Serie[];
   notas?: string;
@@ -471,20 +471,20 @@ Las acciones independientes del mismo turno se agrupan en una tarjeta. Al confir
 
 Las declaraciones para Gemini están en `toolDefinitions.ts`; el comportamiento real, en `toolExecutor.ts`.
 
-| Tool | Propósito | Contrato real |
-|---|---|---|
-| `crear_carpeta` | Crear carpeta | Orden al final; carpetas planas. |
-| `crear_ejercicio` | Crear ejercicio | Evita duplicados por nombre sin distinguir mayúsculas. |
-| `crear_rutina` | Crear plantilla | Fuerza/calistenia exige `repsMin`, `repsMax` y `pesoObjetivo`. |
-| `actualizar_planificacion_semanal` | Asignar días | Acepta ID/nombre; normaliza acentos; `null` es descanso. |
-| `editar_carpeta` | Renombrar carpeta | ID o nombre exacto. |
-| `editar_ejercicio` | Editar catálogo | ID o nombre exacto. |
-| `editar_rutina` | Editar plantilla | Renombra, describe, añade, quita o modifica ejercicios. |
-| `registrar_peso` | Crear pesaje | Fecha/hora del argumento o fallback. |
-| `editar_peso` | Corregir pesaje | Busca por fecha y opcionalmente hora. |
-| `registrar_entrenamiento` | Crear log | Modo rutina o modo libre. |
-| `editar_entrenamiento` | Editar log | Fecha obligatoria; evita ambigüedad y falla ante referencias inválidas. |
-| `reordenar_rutina` | Reordenar ejercicios | Debe incluir todos exactamente una vez. |
+| Tool                               | Propósito            | Contrato real                                                           |
+| ---------------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| `crear_carpeta`                    | Crear carpeta        | Orden al final; carpetas planas.                                        |
+| `crear_ejercicio`                  | Crear ejercicio      | Evita duplicados por nombre sin distinguir mayúsculas.                  |
+| `crear_rutina`                     | Crear plantilla      | Fuerza/calistenia exige `repsMin`, `repsMax` y `pesoObjetivo`.          |
+| `actualizar_planificacion_semanal` | Asignar días         | Acepta ID/nombre; normaliza acentos; `null` es descanso.                |
+| `editar_carpeta`                   | Renombrar carpeta    | ID o nombre exacto.                                                     |
+| `editar_ejercicio`                 | Editar catálogo      | ID o nombre exacto.                                                     |
+| `editar_rutina`                    | Editar plantilla     | Renombra, describe, añade, quita o modifica ejercicios.                 |
+| `registrar_peso`                   | Crear pesaje         | Fecha/hora del argumento o fallback.                                    |
+| `editar_peso`                      | Corregir pesaje      | Busca por fecha y opcionalmente hora.                                   |
+| `registrar_entrenamiento`          | Crear log            | Modo rutina o modo libre.                                               |
+| `editar_entrenamiento`             | Editar log           | Fecha obligatoria; evita ambigüedad y falla ante referencias inválidas. |
+| `reordenar_rutina`                 | Reordenar ejercicios | Debe incluir todos exactamente una vez.                                 |
 
 ### Resolución por ID/nombre
 
@@ -566,16 +566,16 @@ El modo visual se guarda en `localStorage` con `platonapp.colorMode`; los datos 
 
 ### Dónde implementar
 
-| Necesidad | Lugar |
-|---|---|
-| Campo persistido nuevo | `core/db.ts` + migración + backup + README |
-| Operación de rutinas | `features/rutinas/data.ts` + consumidor |
-| Cálculo analítico | `features/analytics` o `features/metrics` |
-| Campo de serie | `db.ts` + logger + plantilla + IA si aplica |
-| Nueva tool IA | tipos, declaration, executor, prompt, UI y README |
-| Tema global | `core/theme.tsx` |
-| Navegación | `App.tsx` y `AppFooter.tsx` |
-| Backup | `core/backup.ts` |
+| Necesidad              | Lugar                                             |
+| ---------------------- | ------------------------------------------------- |
+| Campo persistido nuevo | `core/db.ts` + migración + backup + README        |
+| Operación de rutinas   | `features/rutinas/data.ts` + consumidor           |
+| Cálculo analítico      | `features/analytics` o `features/metrics`         |
+| Campo de serie         | `db.ts` + logger + plantilla + IA si aplica       |
+| Nueva tool IA          | tipos, declaration, executor, prompt, UI y README |
+| Tema global            | `core/theme.tsx`                                  |
+| Navegación             | `App.tsx` y `AppFooter.tsx`                       |
+| Backup                 | `core/backup.ts`                                  |
 
 ### Nueva tool IA
 
@@ -780,4 +780,3 @@ Si se toca `db.ts`, probar base limpia, upgrades, pérdida cero de datos y expor
 - **Áreas afectadas:** `README.md`; no se modificó la lógica.
 - **Contrato nuevo:** futuras tareas deben actualizar este documento si alteran comportamiento, datos, prompts o tools.
 - **Verificación:** contenido contrastado con el código actual; ejecutar `npm run build` y `npm run lint`.
-
