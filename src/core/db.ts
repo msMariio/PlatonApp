@@ -163,6 +163,8 @@ export interface FunctionCallPart {
   args: Record<string, unknown>;
   /** Firma de pensamiento requerida por Gemini para reenviar functionCalls en turnos posteriores. */
   thoughtSignature?: string;
+  /** Marca de tiempo de la ejecución ya aplicada (evita duplicados al reconfirmar). */
+  appliedAt?: string;
 }
 
 export interface FunctionResponsePart {

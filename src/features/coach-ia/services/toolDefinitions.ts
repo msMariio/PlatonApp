@@ -59,7 +59,8 @@ export interface ReordenarRutinaArgs {
 export interface EjercicioModificarRutinaArgs {
   ejercicioId?: string;
   ejercicioNombre?: string;
-  series: number;
+  /** Número de series resultante. Si se omite, se mantiene el actual. */
+  series?: number;
   repsMin?: number;
   repsMax?: number;
   pesoObjetivo?: number;
@@ -255,7 +256,9 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "crear_rutina",
     description:
       "Crea una nueva plantilla de rutina con ejercicios, series, reps objetivo y descansos. " +
-      "Úsala cuando el atleta pida diseñar una rutina completa o añadir una plantilla de entrenamiento.",
+      "Úsala cuando el atleta pida diseñar una rutina completa o añadir una plantilla de entrenamiento. " +
+      "Si necesitas ejercicios que no están en el catálogo, añade sus crear_ejercicio en la misma " +
+      "propuesta: se ejecutan antes que la rutina dentro del mismo turno.",
     parameters: {
       type: "object",
       properties: {
@@ -294,7 +297,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
+                  "Nombre del ejercicio del catálogo. Si aún no existe, incluye crear_ejercicio en la misma propuesta: las creaciones se ejecutan antes, en el mismo turno.",
               },
               series: {
                 type: "integer",
@@ -456,7 +459,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
+                  "Nombre del ejercicio del catálogo. Si aún no existe, incluye crear_ejercicio en la misma propuesta: las creaciones se ejecutan antes, en el mismo turno.",
               },
               series: {
                 type: "integer",
@@ -539,7 +542,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               series: {
                 type: "integer",
-                description: "Número de series para este ejercicio. Si no cambia, usa el número actual (visible en el LOCAL_SNAPSHOT).",
+                description: "Número de series resultante. Si no se indica, se mantiene el número actual.",
               },
               repsMin: {
                 type: "integer",
@@ -571,7 +574,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
                 description: "Distancia objetivo en km (cardio).",
               },
             },
-            required: ["series"],
+            required: [],
           },
         },
       },
@@ -748,7 +751,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               ejercicioNombre: {
                 type: "string",
                 description:
-                  "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
+                  "Nombre del ejercicio del catálogo. Si aún no existe, incluye crear_ejercicio en la misma propuesta: las creaciones se ejecutan antes, en el mismo turno.",
               },
               series: {
                 type: "array",
@@ -840,7 +843,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
               },
               ejercicioNombre: {
                 type: "string",
-                description: "Nombre del ejercicio del catálogo. Si no existe, la operación se rechazará; crea primero el ejercicio con crear_ejercicio.",
+                description: "Nombre del ejercicio del catálogo. Si aún no existe, incluye crear_ejercicio en la misma propuesta: las creaciones se ejecutan antes, en el mismo turno.",
               },
               series: {
                 type: "array",

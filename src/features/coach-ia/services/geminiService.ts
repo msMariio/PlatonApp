@@ -2,49 +2,38 @@ import { db, type MensajeChat, type SesionChat, type LogEntrenamiento, type Peso
 import { SYSTEM_PROMPT_PERFORMANCE_OS } from "../../../core/ia-prompts";
 import { calcularE1RM } from "../../../core/utils/calculators";
 import {
+  calcularAdherenciaPlanificacion,
   calcularAnaliticaGrupoMuscular,
-  sincronizarSnapshotAdherenciaActual,
   calcularFrecuenciaPromedioMuscular,
   clasificarSeriesMusculares,
 } from "../../analytics/data";
 import { TOOL_DECLARATIONS, type FunctionDeclaration } from "./toolDefinitions";
+import { fechaLocalISO } from "../../../core/utils/dates";
+import {
+  mensajesToGeminiContents,
+  partIsFunctionCall,
+  partIsText,
+  recortarHistorial,
+  type GeminiContent,
+  type GeminiFunctionCallPart,
+  type GeminiTextPart,
+} from "./geminiSerialization";
 
 const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
 
+/** Presupuesto total de una petición, contando todos los reintentos. */
+const GEMINI_TIMEOUT_TOTAL_MS = 45_000;
+/** Tiempo máximo de cada intento individual. */
+const GEMINI_TIMEOUT_INTENTO_MS = 25_000;
+/** Intentos máximos ante errores transitorios (429/5xx/red). */
+const GEMINI_MAX_INTENTOS = 3;
+
+/** Límite de registros de peso y semanas de adherencia enviados en el snapshot. */
+const SNAPSHOT_MAX_REGISTROS_PESO = 60;
+const SNAPSHOT_MAX_SEMANAS_ADHERENCIA = 8;
+
 // ── Tipos internos ───────────────────────────────────────────────────
-
-interface GeminiTextPart {
-  text: string;
-}
-
-interface GeminiFunctionCallPart {
-  functionCall: {
-    name: string;
-    args: Record<string, unknown>;
-  };
-  /** Gemini API usa snake_case en peticiones. */
-  thought_signature?: string;
-  /** Gemini puede devolver camelCase en respuestas (estándar JSON de Google). */
-  thoughtSignature?: string;
-}
-
-interface GeminiFunctionResponsePart {
-  functionResponse: {
-    name: string;
-    response: Record<string, unknown>;
-  };
-}
-
-type GeminiPart =
-  | GeminiTextPart
-  | GeminiFunctionCallPart
-  | GeminiFunctionResponsePart;
-
-interface GeminiContent {
-  role: "user" | "model";
-  parts: GeminiPart[];
-}
 
 interface GeminiTool {
   functionDeclarations: FunctionDeclaration[];
@@ -65,8 +54,13 @@ interface GeminiResponse {
     };
     finishReason?: string;
   }[];
+  promptFeedback?: {
+    blockReason?: string;
+  };
   error?: {
     message: string;
+    code?: number;
+    status?: string;
   };
 }
 
@@ -82,20 +76,6 @@ export interface FunctionCallProposal {
 export interface GeminiResult {
   texto: string | null;
   functionCalls: FunctionCallProposal[];
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function partIsText(
-  p: GeminiTextPart | GeminiFunctionCallPart,
-): p is GeminiTextPart {
-  return "text" in p;
-}
-
-function partIsFunctionCall(
-  p: GeminiTextPart | GeminiFunctionCallPart,
-): p is GeminiFunctionCallPart {
-  return "functionCall" in p;
 }
 
 // ── Snapshot ─────────────────────────────────────────────────────────
@@ -402,7 +382,9 @@ function obtenerFechaActualDelSistema(): {
 } {
   const DIAS_ES = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
   const ahora = new Date();
-  const fechaHoy = ahora.toISOString().slice(0, 10);
+  // Fecha local, no UTC: entre las 00:00 y las 02:00 en España, toISOString()
+  // devolvía el día anterior y el Coach razonaba con "hoy" equivocado.
+  const fechaHoy = fechaLocalISO(ahora);
   const diaSemanaHoy = DIAS_ES[ahora.getDay()];
   return { fechaHoy, diaSemanaHoy };
 }
@@ -448,7 +430,7 @@ async function buildLocalSnapshot(
 
   const hace28Dias = new Date(hoy);
   hace28Dias.setDate(hace28Dias.getDate() - 28);
-  const fechaCorte = hace28Dias.toISOString().slice(0, 10);
+  const fechaCorte = fechaLocalISO(hace28Dias);
 
   const logsRecientes = await db.logsEntrenamientos
     .where("fecha")
@@ -475,10 +457,20 @@ async function buildLocalSnapshot(
 
   // Planificación semanal
   const planificacion = await db.planificacionSemanal.get("default");
-  const adherencia = await sincronizarSnapshotAdherenciaActual(planificacion, logsTodos, rutinas, hoy);
-  const historialAdherencia = await db.adherenciaSemanalSnapshots
-    .orderBy("semanaInicio")
-    .toArray();
+  // Solo lectura: construir el snapshot no debe escribir en la base de datos.
+  // La persistencia del snapshot semanal la hace la vista de analítica.
+  const adherencia = calcularAdherenciaPlanificacion(
+    planificacion,
+    logsTodos,
+    rutinas,
+    hoy,
+  );
+  const semanaInicioActual = fechaLocalISO(adherencia.semanaInicio);
+  const historialAdherencia = (
+    await db.adherenciaSemanalSnapshots.orderBy("semanaInicio").toArray()
+  )
+    .filter((semana) => semana.semanaInicio < semanaInicioActual)
+    .slice(-SNAPSHOT_MAX_SEMANAS_ADHERENCIA);
   const analiticaMuscular = calcularAnaliticaGrupoMuscular(logsTodos, ejercicios, hoy);
   const semanaMuscularActual = analiticaMuscular.actual;
   const semanaMuscularAnterior = analiticaMuscular.semanas[analiticaMuscular.semanas.length - 2].grupos;
@@ -539,11 +531,13 @@ async function buildLocalSnapshot(
       tasaSemanal_kg: velocidadSemanal !== null ? +velocidadSemanal.valor.toFixed(2) : null,
       metodo_tasa: velocidadSemanal?.metodo ?? null,
       tendencia: tendenciaPeso,
-      registros: pesosOrdenados.map((p) => ({
-        fecha: p.fecha,
-        hora: p.hora,
-        valor: p.valor,
-      })),
+      registros: pesosOrdenados
+        .slice(-SNAPSHOT_MAX_REGISTROS_PESO)
+        .map((p) => ({
+          fecha: p.fecha,
+          hora: p.hora,
+          valor: p.valor,
+        })),
     },
     METRICAS_FUERZA: metricasFuerza.length > 0
       ? metricasFuerza.map((m) => ({
@@ -654,73 +648,104 @@ async function buildLocalSnapshot(
   return JSON.stringify(snapshot, null, 2);
 }
 
-// ── Conversión de mensajes al formato Gemini ─────────────────────────
+// ── Llamada a la API ─────────────────────────────────────────────────
 
-/**
- * Convierte MensajeChat[] al formato contents[] de Gemini,
- * incluyendo functionCall y functionResponse cuando corresponda.
- *
- * REGLA CLAVE: Si el modelo generó varias functionCalls en una misma
- * respuesta, Gemini las devuelve en un ÚNICO content con múltiples parts
- * (cada una con su thought_signature). Almacenamos cada functionCall como
- * un MensajeChat separado (para simplificar la UI), pero al reenviarlas
- * a Gemini DEBEN ir agrupadas en un solo content. Esta función hace el
- * merge de mensajes model consecutivos con functionCall respetando el
- * orden de parts original (texto primero, luego functionCalls).
- */
-function mensajesToGeminiContents(mensajes: MensajeChat[]): GeminiContent[] {
-  const contents: GeminiContent[] = [];
+/** Error de la API con la información necesaria para decidir si se reintenta. */
+class GeminiApiError extends Error {
+  readonly reintentable: boolean;
+  readonly retryAfterSegundos: number | null;
 
-  for (let i = 0; i < mensajes.length; i++) {
-    const m = mensajes[i];
-
-    // ── Agrupar functionCalls consecutivos del modelo ────────────
-    if (m.role === "model" && m.functionCall) {
-      const mergedParts: GeminiPart[] = [];
-
-      // El texto viene del primer functionCall del turno (todos comparten el mismo texto)
-      if (m.texto && m.texto.trim().length > 0) {
-        mergedParts.push({ text: m.texto });
-      }
-
-      // Recorrer todos los functionCalls consecutivos del modelo
-      while (i < mensajes.length && mensajes[i].role === "model" && mensajes[i].functionCall) {
-        const fcMsg = mensajes[i];
-        const fcPart: GeminiPart = {
-          functionCall: {
-            name: fcMsg.functionCall!.name,
-            args: fcMsg.functionCall!.args,
-          },
-        };
-        // Incluir thought_signature si está presente (requerido por Gemini)
-        if (fcMsg.functionCall!.thoughtSignature) {
-          (fcPart as GeminiFunctionCallPart).thought_signature =
-            fcMsg.functionCall!.thoughtSignature;
-        }
-        mergedParts.push(fcPart);
-        i++;
-      }
-      i--; // Retroceder uno porque el for hará i++
-
-      contents.push({ role: "model", parts: mergedParts });
-    } else if (m.functionResponse) {
-      contents.push({
-        role: m.role,
-        parts: [{ functionResponse: m.functionResponse }],
-      });
-    } else if (m.texto && m.texto.trim().length > 0) {
-      contents.push({
-        role: m.role,
-        parts: [{ text: m.texto }],
-      });
-    }
-    // Si el mensaje no tiene contenido relevante, se omite
+  constructor(
+    message: string,
+    reintentable = false,
+    retryAfterSegundos: number | null = null,
+  ) {
+    super(message);
+    this.name = "GeminiApiError";
+    this.reintentable = reintentable;
+    this.retryAfterSegundos = retryAfterSegundos;
   }
-
-  return contents;
 }
 
-// ── Llamada a la API ─────────────────────────────────────────────────
+/** Traduce una respuesta HTTP de error a un mensaje accionable en español. */
+async function leerErrorDeRespuesta(
+  response: Response,
+): Promise<GeminiApiError> {
+  const data = (await response
+    .json()
+    .catch(() => null)) as GeminiResponse | null;
+  const mensajeApi = data?.error?.message ?? "";
+  const codigo = data?.error?.code ?? response.status;
+  const texto = mensajeApi.toLowerCase();
+
+  const retryAfterCrudo = Number(response.headers.get("retry-after"));
+  const retryAfter =
+    Number.isFinite(retryAfterCrudo) && retryAfterCrudo > 0
+      ? retryAfterCrudo
+      : null;
+
+  if (
+    codigo === 401 ||
+    codigo === 403 ||
+    (texto.includes("api key") &&
+      /(invalid|not valid|expired|missing|incorrect)/.test(texto))
+  ) {
+    return new GeminiApiError(
+      "[!] LA API KEY DE GEMINI NO ES VÁLIDA. Revísala en AJUSTES > CONFIGURACIÓN IA.",
+    );
+  }
+
+  if (codigo === 404) {
+    return new GeminiApiError(
+      "[!] EL MODELO DE GEMINI CONFIGURADO NO ESTÁ DISPONIBLE (404). La app usa un modelo fijado: si Google lo ha retirado, hay que actualizarlo.",
+    );
+  }
+
+  if (codigo === 429) {
+    // Gemini suele indicar la espera dentro del propio mensaje ("Please retry in 21.7s").
+    const sugerencia = /retry in ([\d.]+)\s*s/.exec(texto);
+    const segundos = sugerencia ? Math.ceil(Number(sugerencia[1])) : retryAfter;
+
+    // No bloquear la interfaz esperando ventanas largas: se informa y se sale.
+    if (segundos != null && segundos > 10) {
+      return new GeminiApiError(
+        `[!] GEMINI ESTÁ LIMITANDO LAS PETICIONES (429). Espera unos ${segundos} s antes de volver a enviar el mensaje.`,
+      );
+    }
+
+    return new GeminiApiError(
+      "[!] GEMINI ESTÁ SATURADO (HIGH DEMAND, 429). He reintentado varias veces sin éxito; espera unos segundos y vuelve a enviar el mensaje.",
+      true,
+      segundos ?? null,
+    );
+  }
+
+  if (codigo >= 500) {
+    return new GeminiApiError(
+      "[!] GEMINI ESTÁ SATURADO (HIGH DEMAND). He reintentado varias veces sin éxito; espera unos segundos y vuelve a enviar el mensaje.",
+      true,
+      retryAfter,
+    );
+  }
+
+  const detalle = mensajeApi || response.statusText;
+  return new GeminiApiError(
+    `[!] GEMINI RECHAZÓ LA PETICIÓN (HTTP ${codigo}). ${detalle}`.trim(),
+  );
+}
+
+/** Espera antes de reintentar: respeta Retry-After o aplica backoff con jitter. */
+function esperaReintentoMs(intento: number, retryAfterSegundos: number | null): number {
+  if (retryAfterSegundos != null) return retryAfterSegundos * 1000;
+  return 700 * 2 ** (intento - 1) + Math.random() * 400;
+}
+
+/** Espera sin pasarse del presupuesto total de la petición. */
+async function esperar(ms: number, limite: number): Promise<void> {
+  const margen = limite - Date.now() - 500;
+  if (margen <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, Math.min(ms, margen)));
+}
 
 async function callGeminiAPI(
   apiKey: string,
@@ -739,39 +764,87 @@ async function callGeminiAPI(
     requestBody.tools = [{ functionDeclarations: TOOL_DECLARATIONS }];
   }
 
-  const response = await fetch(
-    `${GEMINI_API_BASE}?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    },
+  const cuerpo = JSON.stringify(requestBody);
+  const limite = Date.now() + GEMINI_TIMEOUT_TOTAL_MS;
+  let ultimoError: GeminiApiError | null = null;
+
+  for (let intento = 1; intento <= GEMINI_MAX_INTENTOS; intento++) {
+    const restante = limite - Date.now();
+    if (restante <= 0) break;
+
+    const controller = new AbortController();
+    const temporizador = setTimeout(
+      () => controller.abort(),
+      Math.min(restante, GEMINI_TIMEOUT_INTENTO_MS),
+    );
+
+    try {
+      const response = await fetch(
+        `${GEMINI_API_BASE}?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: cuerpo,
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        throw await leerErrorDeRespuesta(response);
+      }
+
+      const data = (await response.json()) as GeminiResponse;
+
+      if (data.error) {
+        throw new GeminiApiError(
+          `[!] GEMINI DEVOLVIÓ UN ERROR: ${data.error.message}`,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      const errorGemini =
+        error instanceof GeminiApiError
+          ? error
+          : error instanceof DOMException && error.name === "AbortError"
+            ? new GeminiApiError(
+                "[!] GEMINI TARDÓ DEMASIADO EN RESPONDER. Vuelve a intentarlo.",
+                true,
+              )
+            : new GeminiApiError(
+                "[!] NO SE PUDO CONTACTAR CON GEMINI. Comprueba tu conexión e inténtalo de nuevo.",
+                true,
+              );
+
+      ultimoError = errorGemini;
+
+      if (!errorGemini.reintentable || intento === GEMINI_MAX_INTENTOS) {
+        throw errorGemini;
+      }
+
+      await esperar(
+        esperaReintentoMs(intento, errorGemini.retryAfterSegundos),
+        limite,
+      );
+    } finally {
+      clearTimeout(temporizador);
+    }
+  }
+
+  throw (
+    ultimoError ??
+    new GeminiApiError(
+      "[!] NO SE PUDO CONTACTAR CON GEMINI. Comprueba tu conexión e inténtalo de nuevo.",
+    )
   );
-
-  if (!response.ok) {
-    const errorData = (await response
-      .json()
-      .catch(() => null)) as GeminiResponse | null;
-    const errorMsg =
-      errorData?.error?.message ??
-      `HTTP ${response.status}: ${response.statusText}`;
-    throw new Error(`[!] ERROR GEMINI API: ${errorMsg}`);
-  }
-
-  const data = (await response.json()) as GeminiResponse;
-
-  if (data.error) {
-    throw new Error(`[!] ERROR GEMINI API: ${data.error.message}`);
-  }
-
-  return data;
 }
 
 /**
  * Parsea la respuesta de Gemini extrayendo texto y functionCalls.
  */
 function parseGeminiResponse(data: GeminiResponse): GeminiResult {
-  const parts = data.candidates?.[0]?.content?.parts ?? [];
+  const candidato = data.candidates?.[0];
+  const parts = candidato?.content?.parts ?? [];
 
   const textos: string[] = [];
   const functionCalls: FunctionCallProposal[] = [];
@@ -791,8 +864,34 @@ function parseGeminiResponse(data: GeminiResponse): GeminiResult {
   const texto = textos.length > 0 ? textos.join("\n").trim() : null;
 
   if (!texto && functionCalls.length === 0) {
+    const finishReason = candidato?.finishReason;
+    const blockReason = data.promptFeedback?.blockReason;
+
+    if (
+      blockReason != null ||
+      finishReason === "SAFETY" ||
+      finishReason === "PROHIBITED_CONTENT" ||
+      finishReason === "BLOCKLIST"
+    ) {
+      throw new Error(
+        "[!] GEMINI BLOQUEÓ LA RESPUESTA POR SUS FILTROS DE SEGURIDAD. Reformula el mensaje.",
+      );
+    }
+
+    if (finishReason === "MAX_TOKENS") {
+      throw new Error(
+        "[!] LA RESPUESTA SE CORTÓ POR LONGITUD. Divide la petición en partes más pequeñas.",
+      );
+    }
+
+    if (finishReason === "RECITATION") {
+      throw new Error(
+        "[!] GEMINI DETUVO LA RESPUESTA POR POSIBLE RECITACIÓN DE CONTENIDO PROTEGIDO. Reformula el mensaje.",
+      );
+    }
+
     throw new Error(
-      "[!] EL MODELO NO GENERÓ RESPUESTA. Revisa los datos e inténtalo de nuevo.",
+      "[!] EL MODELO NO GENERÓ RESPUESTA. Vuelve a intentarlo.",
     );
   }
 
@@ -837,8 +936,10 @@ ${snapshot}
 [//] SNAPSHOT_GENERADO es solo un sello de frescor del snapshot. NO lo uses como referencia de "hoy".
 [//] Usa EXCLUSIVAMENTE el campo FECHA_ACTUAL del snapshot para saber qué día es hoy, mañana o ayer.`;
 
-  // Convertir mensajes previos
-  const contents: GeminiContent[] = mensajesToGeminiContents(mensajesPrevios);
+  // Convertir mensajes previos (ventana de contexto acotada)
+  const contents: GeminiContent[] = mensajesToGeminiContents(
+    recortarHistorial(mensajesPrevios),
+  );
 
   // Añadir el nuevo mensaje del usuario
   contents.push({
@@ -886,7 +987,7 @@ ${snapshot}
 [//] SNAPSHOT_GENERADO es solo un sello de frescor del snapshot. NO lo uses como referencia de "hoy".
 [//] Usa EXCLUSIVAMENTE el campo FECHA_ACTUAL del snapshot para saber qué día es hoy, mañana o ayer.`;
 
-  const contents = mensajesToGeminiContents(mensajesCompletos);
+  const contents = mensajesToGeminiContents(recortarHistorial(mensajesCompletos));
 
   const data = await callGeminiAPI(apiKey, systemInstruction, contents, true);
 
@@ -928,6 +1029,38 @@ export async function agregarMensajeASesion(
   sesion.fechaActualizacion = new Date().toISOString();
 
   await db.sesiones_chat.put(sesion);
+}
+
+/**
+ * Marca llamadas a función como ya aplicadas en la base de datos.
+ *
+ * Sirve de red de seguridad si la app se cierra justo después de ejecutar una
+ * acción pero antes de guardar su `functionResponse`: al reconfirmar, la acción
+ * no se vuelve a ejecutar (evita rutinas, pesos o entrenos duplicados).
+ */
+export async function marcarFuncionesAplicadas(
+  sesionId: number,
+  mensajeIds: string[],
+): Promise<void> {
+  if (mensajeIds.length === 0) return;
+
+  const sesion = await db.sesiones_chat.get(sesionId);
+  if (!sesion) return;
+
+  const ids = new Set(mensajeIds);
+  const ahora = new Date().toISOString();
+  let modificado = false;
+
+  for (const mensaje of sesion.mensajes) {
+    if (!ids.has(mensaje.id) || !mensaje.functionCall) continue;
+    if (mensaje.functionCall.appliedAt) continue;
+    mensaje.functionCall.appliedAt = ahora;
+    modificado = true;
+  }
+
+  if (modificado) {
+    await db.sesiones_chat.put(sesion);
+  }
 }
 
 /**

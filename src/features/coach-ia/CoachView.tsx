@@ -5,6 +5,7 @@ import {
   Typography,
   IconButton,
   TextField,
+  Button,
   Card,
   CardContent,
   Drawer,
@@ -20,6 +21,7 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ErrorIcon from "@mui/icons-material/Error";
+import BlockIcon from "@mui/icons-material/Block";
 import { useLiveQuery } from "dexie-react-hooks";
 import ReactMarkdown from "react-markdown";
 import { db, type MensajeChat } from "../../core/db";
@@ -30,6 +32,7 @@ import {
   agregarMensajeASesion,
   actualizarTituloSesion,
   eliminarSesionChat,
+  marcarFuncionesAplicadas,
   type GeminiResult,
   type FunctionCallProposal,
 } from "./services/geminiService";
@@ -53,6 +56,22 @@ const DRAWER_WIDTH = 280;
 
 /** Umbral de 2 horas para reutilizar la última sesión al abrir el chat. */
 const UMBRAL_REUTILIZACION_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Devuelve los mensajes del modelo con `functionCall` que todavía no tienen
+ * respuesta (ni ejecución confirmada ni cancelación del usuario).
+ */
+function obtenerFuncionesPendientes(mensajes: MensajeChat[]): MensajeChat[] {
+  return mensajes.filter((m, index) => {
+    if (m.role !== "model" || !m.functionCall) return false;
+    return !mensajes.slice(index + 1).some(
+      (post) =>
+        post.role === "user" &&
+        (post.functionResponse?.name === m.functionCall!.name ||
+          post.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
+    );
+  });
+}
 
 /** Convierte una fecha ISO a texto relativo: "Ahora", "Hace 5 min", "Hace 2h", "Ayer", "Hace 3d". */
 function formatearTiempoRelativo(fechaIso: string): string {
@@ -84,7 +103,17 @@ export function CoachView() {
   const [procesandoPropuesta, setProcesandoPropuesta] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Último envío que no llegó a Gemini. El mensaje ya está guardado en la
+  // sesión, así que reintentar repite la llamada sin duplicar el texto.
+  const [ultimoFallo, setUltimoFallo] = useState<{
+    texto: string;
+    sesionId: number;
+  } | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Candados síncronos: el estado de React no bloquea un segundo toque antes
+  // del re-render, y una doble confirmación duplicaba las acciones.
+  const confirmacionEnCurso = useRef(false);
+  const cancelacionEnCurso = useRef(false);
 
   // Leer sesiones de forma reactiva (null = aún no cargado)
   const sesiones = useLiveQuery(
@@ -192,28 +221,50 @@ export function CoachView() {
     const sesion = await db.sesiones_chat.get(sId);
     if (!sesion) return;
 
-    const mensajes = sesion.mensajes;
-    const pendientes = mensajes.filter((m, index) => {
-      if (m.role !== "model" || !m.functionCall) return false;
-      return !mensajes.slice(index + 1).some(
-        (post) =>
-          post.role === "user" &&
-          (post.functionResponse?.name === m.functionCall!.name ||
-            post.texto === "[PROPUESTA CANCELADA POR EL USUARIO]"),
-      );
-    });
-
+    const pendientes = obtenerFuncionesPendientes(sesion.mensajes);
     if (pendientes.length === 0) return;
 
+    // Si una llamada ya se aplicó (la app se cerró justo después de ejecutarla),
+    // no se repite: solo se deja constancia en la conversación.
+    const yaAplicadas = pendientes.filter((m) => m.functionCall!.appliedAt);
+    const porEjecutar = pendientes.filter((m) => !m.functionCall!.appliedAt);
+
+    for (const propuesta of yaAplicadas) {
+      await agregarMensajeASesion(sId, {
+        id: msgId(),
+        role: "user",
+        texto: `[✓] ${propuesta.functionCall!.name} ya se había aplicado (no se repite).`,
+        timestamp: new Date().toISOString(),
+        functionResponse: {
+          name: propuesta.functionCall!.name,
+          response: {
+            success: true,
+            alreadyApplied: true,
+            message:
+              "Esta acción ya se aplicó antes; no se ha ejecutado de nuevo.",
+          },
+        },
+      });
+    }
+
+    if (porEjecutar.length === 0) return;
+
     const resultados = await executeFunctionCalls(
-      pendientes.map((m) => ({
+      porEjecutar.map((m) => ({
         name: m.functionCall!.name,
         args: m.functionCall!.args,
       }) as unknown as FunctionCallArgs),
     );
 
-    for (let index = 0; index < pendientes.length; index++) {
-      const propuesta = pendientes[index];
+    // Marcar ANTES de escribir las respuestas: si la app se cierra entre medias,
+    // al reabrir la propuesta no se vuelve a ejecutar.
+    const aplicadas = porEjecutar.filter(
+      (_, index) => resultados[index]?.success === true,
+    );
+    await marcarFuncionesAplicadas(sId, aplicadas.map((m) => m.id));
+
+    for (let index = 0; index < porEjecutar.length; index++) {
+      const propuesta = porEjecutar[index];
       const result = resultados[index];
       const success = result.success === true;
       await agregarMensajeASesion(sId, {
@@ -288,6 +339,7 @@ export function CoachView() {
 
     setMensajeInput("");
     setErrorMsg(null);
+    setUltimoFallo(null);
     setLoading(true);
 
     // Push optimista del mensaje del usuario
@@ -304,6 +356,9 @@ export function CoachView() {
       setErrorMsg(
         "[!] ERROR AL GUARDAR EL MENSAJE LOCALMENTE. Intenta de nuevo.",
       );
+      // Sin mensaje guardado no hay nada que reenviar: se vuelve a escribir.
+      setUltimoFallo(null);
+      setMensajeInput(texto);
       setLoading(false);
       return;
     }
@@ -332,10 +387,12 @@ export function CoachView() {
 
       // Procesar respuesta (puede incluir texto y/o functionCalls)
       await procesarRespuestaGemini(sId, resultado);
+      setUltimoFallo(null);
     } catch (err) {
       const errText =
         err instanceof Error ? err.message : "[!] ERROR DESCONOCIDO";
       setErrorMsg(errText);
+      setUltimoFallo({ texto, sesionId: sId });
     } finally {
       setLoading(false);
     }
@@ -349,12 +406,57 @@ export function CoachView() {
   ]);
 
   /**
+   * Reintenta el último envío que falló. El mensaje del usuario ya está en la
+   * sesión: se reutiliza el historial anterior a él en vez de insertarlo otra
+   * vez, para que un reintento no aparezca duplicado en la conversación.
+   */
+  const handleReintentarEnvio = useCallback(async () => {
+    if (!ultimoFallo || loading || procesandoPropuesta) return;
+
+    const { texto, sesionId } = ultimoFallo;
+    setErrorMsg(null);
+    setLoading(true);
+
+    try {
+      const sesion = await db.sesiones_chat.get(sesionId);
+      const guardados = sesion?.mensajes ?? [];
+
+      let indiceFallo = -1;
+      for (let i = guardados.length - 1; i >= 0; i--) {
+        if (guardados[i].role === "user") {
+          indiceFallo = i;
+          break;
+        }
+      }
+      const previos =
+        indiceFallo >= 0 ? guardados.slice(0, indiceFallo) : guardados;
+
+      const resultado = await enviarMensajeAGemini(texto, previos);
+      await procesarRespuestaGemini(sesionId, resultado);
+      setUltimoFallo(null);
+    } catch (err) {
+      const errText =
+        err instanceof Error ? err.message : "[!] ERROR DESCONOCIDO";
+      setErrorMsg(errText);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    ultimoFallo,
+    loading,
+    procesandoPropuesta,
+    procesarRespuestaGemini,
+  ]);
+
+  /**
    * El usuario confirma la propuesta. Ejecuta las herramientas y
    * notifica a Gemini del resultado.
    */
   const handleConfirmarPropuesta = useCallback(async () => {
     if (!sesionActivaId) return;
+    if (confirmacionEnCurso.current) return;
 
+    confirmacionEnCurso.current = true;
     setProcesandoPropuesta(true);
     setErrorMsg(null);
 
@@ -379,6 +481,7 @@ export function CoachView() {
         err instanceof Error ? err.message : "[!] ERROR DESCONOCIDO";
       setErrorMsg(errText);
     } finally {
+      confirmacionEnCurso.current = false;
       setProcesandoPropuesta(false);
     }
   }, [sesionActivaId, ejecutarAccionesPendientes, procesarRespuestaGemini]);
@@ -389,23 +492,40 @@ export function CoachView() {
    */
   const handleCancelarPropuesta = useCallback(async () => {
     if (!hayPropuestaPendiente || !sesionActivaId) return;
+    if (cancelacionEnCurso.current) return;
 
+    cancelacionEnCurso.current = true;
     setProcesandoPropuesta(true);
     setErrorMsg(null);
 
     const sId = sesionActivaId;
 
-    // Guardar mensaje de cancelación
-    const msgCancel: MensajeChat = {
-      id: msgId(),
-      role: "user",
-      texto: "[PROPUESTA CANCELADA POR EL USUARIO]",
-      timestamp: new Date().toISOString(),
-    };
-    await agregarMensajeASesion(sId, msgCancel);
-
-    // Re-send to Gemini for alternative
     try {
+      // Cada functionCall DEBE tener su functionResponse: enviar solo un mensaje
+      // de texto dejaba la sesión entera devolviendo 400 en cada envío posterior.
+      const sesion = await db.sesiones_chat.get(sId);
+      const pendientes = obtenerFuncionesPendientes(sesion?.mensajes ?? []);
+
+      for (const propuesta of pendientes) {
+        const msgCancel: MensajeChat = {
+          id: msgId(),
+          role: "user",
+          texto: `[PROPUESTA CANCELADA POR EL USUARIO] ${propuesta.functionCall!.name}`,
+          timestamp: new Date().toISOString(),
+          functionResponse: {
+            name: propuesta.functionCall!.name,
+            response: {
+              success: false,
+              cancelled: true,
+              message:
+                "El usuario ha cancelado la acción; no se ha ejecutado.",
+            },
+          },
+        };
+        await agregarMensajeASesion(sId, msgCancel);
+      }
+
+      // Re-send to Gemini for alternative
       const sesionActualizada = await db.sesiones_chat.get(sId);
       if (sesionActualizada) {
         const resultadoGemini = await enviarRespuestaFuncionAGemini(
@@ -421,6 +541,7 @@ export function CoachView() {
         err instanceof Error ? err.message : "[!] ERROR DESCONOCIDO";
       setErrorMsg(errText);
     } finally {
+      cancelacionEnCurso.current = false;
       setProcesandoPropuesta(false);
     }
   }, [hayPropuestaPendiente, sesionActivaId, procesarRespuestaGemini]);
@@ -845,7 +966,14 @@ export function CoachView() {
 
     if (esRespuestaTool) {
       // Mostrar resultado de ejecución de forma compacta
-      const success = msg.functionResponse?.response?.success;
+      const response = msg.functionResponse?.response;
+      const success = response?.success === true;
+      const cancelado = response?.cancelled === true;
+      const colorSistema = cancelado
+        ? "text.secondary"
+        : success
+          ? "primary.main"
+          : "error.main";
       return (
         <Box
           key={msg.id ?? idx}
@@ -860,16 +988,18 @@ export function CoachView() {
               maxWidth: "85%",
               minWidth: "20%",
               border: "1px solid",
-              borderColor: success ? "primary.main" : "error.main",
+              borderColor: colorSistema,
               borderRight: "4px solid",
-              borderRightColor: success ? "primary.main" : "error.main",
+              borderRightColor: colorSistema,
               bgcolor: (theme) =>
-                alpha(
-                  success
-                    ? theme.palette.primary.main
-                    : theme.palette.error.main,
-                  0.05,
-                ),
+                cancelado
+                  ? alpha(theme.palette.text.disabled, 0.06)
+                  : alpha(
+                      success
+                        ? theme.palette.primary.main
+                        : theme.palette.error.main,
+                      0.05,
+                    ),
               p: 1.5,
             }}
           >
@@ -881,7 +1011,9 @@ export function CoachView() {
                 mb: 0.5,
               }}
             >
-              {success ? (
+              {cancelado ? (
+                <BlockIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+              ) : success ? (
                 <CheckCircleIcon sx={{ fontSize: 14, color: "primary.main" }} />
               ) : (
                 <ErrorIcon sx={{ fontSize: 14, color: "error.main" }} />
@@ -903,7 +1035,7 @@ export function CoachView() {
             </Box>
             <Typography
               variant="body2"
-              color={success ? "primary.main" : "error.main"}
+              color={colorSistema}
               sx={{ lineHeight: 1.5 }}
             >
               {msg.texto}
@@ -1173,10 +1305,50 @@ export function CoachView() {
               <Typography
                 variant="caption"
                 color="error.main"
-                sx={{ letterSpacing: "0.03em" }}
+                sx={{ letterSpacing: "0.03em", display: "block" }}
               >
                 {errorMsg}
               </Typography>
+              <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                {ultimoFallo && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    disableElevation
+                    onClick={handleReintentarEnvio}
+                    disabled={loading || procesandoPropuesta}
+                    sx={{
+                      borderRadius: 0,
+                      fontFamily: "monospace",
+                      letterSpacing: "0.05em",
+                      fontSize: "0.65rem",
+                    }}
+                  >
+                    REINTENTAR
+                  </Button>
+                )}
+                <Button
+                  size="small"
+                  variant="text"
+                  color="inherit"
+                  disableElevation
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setUltimoFallo(null);
+                  }}
+                  disabled={loading}
+                  sx={{
+                    borderRadius: 0,
+                    fontFamily: "monospace",
+                    letterSpacing: "0.05em",
+                    fontSize: "0.65rem",
+                    color: "text.secondary",
+                  }}
+                >
+                  DESCARTAR
+                </Button>
+              </Box>
             </Box>
           )}
 

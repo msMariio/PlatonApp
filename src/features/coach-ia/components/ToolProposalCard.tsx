@@ -1,7 +1,8 @@
+import { useMemo } from "react";
 import { Box, Typography, Button, alpha } from "@mui/material";
 import ReactMarkdown from "react-markdown";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type Ejercicio, type LogEntrenamiento, type PesoDiario, type Rutina, type Serie } from "../../../core/db";
+import { db, type Carpeta, type Ejercicio, type LogEntrenamiento, type PesoDiario, type Rutina, type Serie } from "../../../core/db";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
@@ -13,6 +14,8 @@ import ScaleIcon from "@mui/icons-material/Scale";
 import SwapVertIcon from "@mui/icons-material/SwapVert";
 import EventNoteIcon from "@mui/icons-material/EventNote";
 import type { FunctionCallProposal } from "../services/geminiService";
+import { validarPropuestas } from "../services/proposalValidation";
+import { diaDeFecha, fechaLocalISO } from "../../../core/utils/dates";
 
 type Props = {
   proposals: FunctionCallProposal[];
@@ -29,10 +32,13 @@ const toolIcons: Record<string, React.ReactNode> = {
   crear_rutina: <ListAltIcon sx={{ fontSize: 14 }} />,
   actualizar_planificacion_semanal: <CalendarMonthIcon sx={{ fontSize: 14 }} />,
   editar_rutina: <EditNoteIcon sx={{ fontSize: 14 }} />,
+  reordenar_rutina: <SwapVertIcon sx={{ fontSize: 14 }} />,
+  registrar_entrenamiento: <EventNoteIcon sx={{ fontSize: 14 }} />,
   editar_entrenamiento: <EventNoteIcon sx={{ fontSize: 14 }} />,
+  editar_ejercicio: <FitnessCenterIcon sx={{ fontSize: 14 }} />,
+  editar_carpeta: <CreateNewFolderIcon sx={{ fontSize: 14 }} />,
   registrar_peso: <ScaleIcon sx={{ fontSize: 14 }} />,
   editar_peso: <ScaleIcon sx={{ fontSize: 14 }} />,
-  reordenar_rutina: <SwapVertIcon sx={{ fontSize: 14 }} />,
 };
 
 const toolLabels: Record<string, string> = {
@@ -41,18 +47,31 @@ const toolLabels: Record<string, string> = {
   crear_rutina: "CREAR RUTINA",
   actualizar_planificacion_semanal: "PLANIFICAR SEMANA",
   editar_rutina: "EDITAR RUTINA",
+  reordenar_rutina: "REORDENAR RUTINA",
+  registrar_entrenamiento: "REGISTRAR ENTRENAMIENTO",
   editar_entrenamiento: "EDITAR ENTRENAMIENTO",
+  editar_ejercicio: "EDITAR EJERCICIO",
+  editar_carpeta: "EDITAR CARPETA",
   registrar_peso: "REGISTRAR PESO",
   editar_peso: "EDITAR PESO",
-  reordenar_rutina: "REORDENAR RUTINA",
 };
 
 /** Contexto local utilizado para convertir argumentos en cambios antes/después. */
 type ProposalContext = {
   rutinas: Rutina[];
   ejercicios: Ejercicio[];
+  carpetas: Carpeta[];
   logs: LogEntrenamiento[];
   pesos: PesoDiario[];
+};
+
+/** Contexto vacío estable mientras la consulta reactiva aún no ha resuelto. */
+const CONTEXTO_VACIO: ProposalContext = {
+  rutinas: [],
+  ejercicios: [],
+  carpetas: [],
+  logs: [],
+  pesos: [],
 };
 
 function normalizeText(value: unknown): string {
@@ -81,12 +100,29 @@ function ejercicioNombre(ref: Record<string, unknown>, ejercicios: Ejercicio[]):
   return findEjercicio(ref, ejercicios)?.nombre ?? String(ref.ejercicioNombre ?? ref.ejercicioId ?? "Ejercicio desconocido");
 }
 
+/**
+ * El modelo a veces manda números como texto ("78.5"); el ejecutor los
+ * convierte, así que la vista previa debe hacer lo mismo para no mostrar "—"
+ * en un valor que sí se va a aplicar.
+ */
 function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const convertido = Number(value);
+    return Number.isFinite(convertido) ? convertido : undefined;
+  }
+  return undefined;
 }
 
 function formatNumber(value: unknown): string {
-  return typeof value === "number" ? String(value) : "—";
+  const numero = asNumber(value);
+  return numero === undefined ? "—" : String(numero);
+}
+
+/** Fecha del argumento en formato YYYY-MM-DD; si falta, hoy en hora local. */
+function fechaArg(value: unknown): string {
+  const dia = diaDeFecha(String(value ?? "").trim());
+  return dia.length === 10 ? dia : fechaLocalISO();
 }
 
 type RealSeriesLike = {
@@ -197,7 +233,7 @@ function renderRoutineEdit(args: Record<string, unknown>, context: ProposalConte
 }
 
 function renderWorkoutEdit(args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
-  const fecha = String(args.fecha ?? "");
+  const fecha = fechaArg(args.fecha);
   const rutinaNombre = normalizeText(args.rutinaNombre);
   const log = context.logs.find((item) => item.fecha.slice(0, 10) === fecha && (!rutinaNombre || normalizeText(item.rutinaSnapshot) === rutinaNombre || item.rutinaId === args.rutinaId));
   const modificaciones = (args.ejerciciosModificar as Array<Record<string, unknown>> | undefined) ?? [];
@@ -251,16 +287,134 @@ function renderReorder(args: Record<string, unknown>, context: ProposalContext):
 }
 
 function renderWeight(name: "registrar_peso" | "editar_peso", args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
-  const fecha = String(args.fecha ?? "hoy");
+  const fecha = fechaArg(args.fecha);
   const hora = typeof args.hora === "string" ? ` · ${args.hora}` : "";
   if (name === "registrar_peso") {
     return <ChangeRow label={`PESO · ${fecha}${hora}`} before="—" after={`${formatNumber(args.valor)} kg`} />;
   }
 
-  const registro = context.pesos.find((peso) =>
-    peso.fecha === fecha && (!args.hora || peso.hora === args.hora),
+  const registro = context.pesos.find(
+    (peso) =>
+      diaDeFecha(peso.fecha) === fecha &&
+      (!args.hora || peso.hora === args.hora),
   );
   return <ChangeRow label={`PESO · ${fecha}${hora}`} before={registro ? `${registro.valor} kg` : "registro no encontrado"} after={`${formatNumber(args.nuevoValor)} kg`} />;
+}
+
+function formatSerieReal(serie: Record<string, unknown>): string {
+  if (serie.duracionMinutos != null) return `${formatNumber(serie.duracionMinutos)} min`;
+  if (serie.distanciaKm != null) return `${formatNumber(serie.distanciaKm)} km`;
+  const peso = serie.peso != null ? ` @ ${formatNumber(serie.peso)} kg` : "";
+  return `${formatNumber(serie.reps)} reps${peso}`;
+}
+
+function renderRegistrarEntrenamiento(
+  args: Record<string, unknown>,
+  context: ProposalContext,
+): React.ReactNode {
+  const fecha = fechaArg(args.fecha);
+  const rutinaNombre =
+    typeof args.rutinaNombre === "string" ? args.rutinaNombre : null;
+  const ejercicios =
+    (args.ejercicios as Array<Record<string, unknown>> | undefined) ?? [];
+
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography variant="caption" sx={{ fontWeight: "bold", display: "block" }}>
+        {rutinaNombre ?? "Entrenamiento libre"} · {fecha}
+      </Typography>
+      {rutinaNombre && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 0.5 }}
+        >
+          Se copiarán los pesos y reps objetivo de la rutina como series completadas.
+        </Typography>
+      )}
+      {ejercicios.map((ejercicio, index) => {
+        const series =
+          (ejercicio.series as Array<Record<string, unknown>> | undefined) ?? [];
+        return (
+          <Box
+            key={index}
+            sx={{ mt: 0.75, pl: 1, borderLeft: 2, borderColor: "divider" }}
+          >
+            <Typography variant="caption" sx={{ display: "block", fontWeight: "bold" }}>
+              {ejercicioNombre(ejercicio, context.ejercicios)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {series.length > 0
+                ? series.map(formatSerieReal).join(" · ")
+                : "sin series"}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+function renderEditarEjercicio(
+  args: Record<string, unknown>,
+  context: ProposalContext,
+): React.ReactNode {
+  const actual = findEjercicio(args, context.ejercicios);
+
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography variant="caption" sx={{ display: "block", fontWeight: "bold" }}>
+        {actual?.nombre ?? String(args.ejercicioNombre ?? args.ejercicioId ?? "Ejercicio")}
+      </Typography>
+      {args.nombre !== undefined && (
+        <ChangeRow label="NOMBRE" before={actual?.nombre ?? "—"} after={String(args.nombre)} />
+      )}
+      {args.grupoMuscular !== undefined && (
+        <ChangeRow
+          label="GRUPO"
+          before={String(actual?.grupoMuscular ?? "—").toUpperCase()}
+          after={String(args.grupoMuscular).toUpperCase()}
+        />
+      )}
+      {args.tipo !== undefined && (
+        <ChangeRow
+          label="TIPO"
+          before={String(actual?.tipo ?? "—").toUpperCase()}
+          after={String(args.tipo).toUpperCase()}
+        />
+      )}
+      {args.descripcion !== undefined && (
+        <ChangeRow
+          label="DESCRIPCIÓN"
+          before={actual?.descripcion || "—"}
+          after={String(args.descripcion)}
+        />
+      )}
+    </Box>
+  );
+}
+
+function renderEditarCarpeta(
+  args: Record<string, unknown>,
+  context: ProposalContext,
+): React.ReactNode {
+  const id = typeof args.carpetaId === "string" ? args.carpetaId : undefined;
+  const nombre = normalizeText(args.carpetaNombre);
+  const actual = context.carpetas.find(
+    (carpeta) =>
+      (id ? carpeta.id === id : false) ||
+      (nombre ? normalizeText(carpeta.nombre) === nombre : false),
+  );
+
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <ChangeRow
+        label="CARPETA"
+        before={actual?.nombre ?? String(args.carpetaNombre ?? args.carpetaId ?? "—")}
+        after={String(args.nombre ?? "—")}
+      />
+    </Box>
+  );
 }
 
 function renderArgs(name: string, args: Record<string, unknown>, context: ProposalContext): React.ReactNode {
@@ -403,6 +557,15 @@ function renderArgs(name: string, args: Record<string, unknown>, context: Propos
     case "editar_entrenamiento":
       return renderWorkoutEdit(args, context);
 
+    case "registrar_entrenamiento":
+      return renderRegistrarEntrenamiento(args, context);
+
+    case "editar_ejercicio":
+      return renderEditarEjercicio(args, context);
+
+    case "editar_carpeta":
+      return renderEditarCarpeta(args, context);
+
     case "registrar_peso":
     case "editar_peso":
       return renderWeight(name, args, context);
@@ -505,16 +668,25 @@ export function ToolProposalCard({
 }: Props) {
   const context = useLiveQuery<ProposalContext>(
     async () => {
-      const [rutinas, ejercicios, logs, pesos] = await Promise.all([
+      const [rutinas, ejercicios, carpetas, logs, pesos] = await Promise.all([
         db.rutinas.toArray(),
         db.ejercicios.toArray(),
+        db.carpetas.toArray(),
         db.logsEntrenamientos.toArray(),
         db.pesos.toArray(),
       ]);
-      return { rutinas, ejercicios, logs, pesos };
+      return { rutinas, ejercicios, carpetas, logs, pesos };
     },
     [],
-  ) ?? { rutinas: [], ejercicios: [], logs: [], pesos: [] };
+  ) ?? CONTEXTO_VACIO;
+
+  // Revisión previa: evita que una acción imposible tumbe todo el lote y
+  // muestra el motivo antes de tocar la base de datos.
+  const revision = useMemo(
+    () => validarPropuestas(proposals, context),
+    [proposals, context],
+  );
+  const problemas = revision.errores;
 
   return (
     <Box
@@ -691,6 +863,85 @@ export function ToolProposalCard({
         </Box>
       ))}
 
+      {/* Revisión previa: errores que el ejecutor rechazaría */}
+      {problemas.length > 0 && (
+        <Box
+          sx={{
+            border: 1,
+            borderColor: "error.main",
+            bgcolor: (theme) => alpha(theme.palette.error.main, 0.06),
+            p: 1.5,
+            mb: 1.5,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="error.main"
+            sx={{
+              display: "block",
+              fontFamily: "monospace",
+              letterSpacing: "0.05em",
+              mb: 0.5,
+            }}
+          >
+            [ NO SE PUEDE EJECUTAR ASÍ ]
+          </Typography>
+          {problemas.map((problema, index) => (
+            <Typography
+              key={index}
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", lineHeight: 1.4 }}
+            >
+              · {problema}
+            </Typography>
+          ))}
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 0.75, fontSize: "0.6rem" }}
+          >
+            CANCELA Y PIDE LA CORRECCIÓN PARA QUE EL COACH LA PROPONGA DE NUEVO.
+          </Typography>
+        </Box>
+      )}
+
+      {/* Avisos: no bloquean la confirmación */}
+      {revision.avisos.length > 0 && (
+        <Box
+          sx={{
+            border: 1,
+            borderColor: "warning.main",
+            bgcolor: (theme) => alpha(theme.palette.warning.main, 0.06),
+            p: 1.5,
+            mb: 1.5,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="warning.main"
+            sx={{
+              display: "block",
+              fontFamily: "monospace",
+              letterSpacing: "0.05em",
+              mb: 0.5,
+            }}
+          >
+            [ REVISA ANTES DE CONFIRMAR ]
+          </Typography>
+          {revision.avisos.map((aviso, index) => (
+            <Typography
+              key={index}
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", lineHeight: 1.4 }}
+            >
+              · {aviso}
+            </Typography>
+          ))}
+        </Box>
+      )}
+
       {/* Separator */}
       <Box
         sx={{
@@ -714,7 +965,7 @@ export function ToolProposalCard({
           size="small"
           startIcon={<CheckIcon />}
           onClick={onConfirm}
-          disabled={disabled}
+          disabled={disabled || problemas.length > 0}
           sx={{
             borderRadius: 0,
             fontFamily: "monospace",
